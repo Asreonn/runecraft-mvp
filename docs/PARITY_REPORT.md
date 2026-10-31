@@ -1,109 +1,87 @@
-# C2 — Python/Godot combat parity
+# C2 — Python/Godot combat parity: d2d3af1
 
-Snapshot: `5065a12c7e3afd63c90af3e1e395711dc87101c0` (detached clone, fetched from origin). Engine `4.7.2.stable.arch_linux.ed1daf0bf`; Python `3.14.7`.
+Commit `d2d3af1d0045075af326c3aa618d50df1fee42ef`; engine `4.7.2.stable.arch_linux.ed1daf0bf`; Python 3.14.7. Detached public origin/main snapshot; no game code edited.
 
-**N1, N2 and N3 are fixed in Python, Godot grid and Godot replay.** B1/B2/B3 remain fixed. Gameplay/reference sources and the existing adapters were not edited. The reporting layer now checks the 130-test suite and asserts all nine economy-contract values.
+**136/136 Python tests; 1242/1242 harness/invariant checks; 16/16 native feature probes.** Same 147 cases / 110 combat cases, 188 compiler comparisons and 220 Godot combat executions. Separate isolation: 49 cases per engine, 223/223 checks (including an explicitly expected R3 divergence).
 
-**Parity remains partial.** 147 cases: 110 combat, 36 expected compile rejections, one incompatible graft. **130/130 Python tests**, **1242/1242 harness/invariant checks**, **16/16 native field/tower probes**; 188 successful compiler comparisons match and 220 Godot combat runs satisfy finite/generation/budget bounds.
-
-| Equality (same 110 combat cases) | 94a1c1a → 5065a12 |
+| Equality / 110 combat | 5065a12 → d2d3af1 |
 |---|---:|
-| grid damage | 55 → 55 / 110 |
-| grid all compared metrics | 49 → 49 / 110 |
-| replay damage | 78 → 78 / 110 |
-| replay all compared metrics | 70 → 70 / 110 |
+| grid damage | 55 → 55 |
+| grid all compared metrics | 49 → 53 |
+| replay damage | 78 → 78 |
+| replay all compared metrics | 70 → 73 |
 
-No damage, target, status-count, field-count or budget metric changes between these commits. All seven cases with material metric changes in each engine change only mana channels/totals. Python additionally persists the mark owner tower. No newly mismatching metric cells or lost whole-case equality were introduced.
+**R1 and R2 are fixed.** Core stacking and ownership probes agree in Python, grid and replay. **New R3: death effects use different shared application budgets**, producing a real damage difference with two poison owners. No new mismatching metric cells in the original 110-case suite; that does not imply full parity for the new behavior.
 
-## Re-run
+## Method, adapters and limits
 
-From the parent project:
+- The original 147 cases and historical equality metric set are retained. Numeric equality: abs 1e-6 + rel 1e-9. Discrete counts remain exact. Per-tower and bleed diagnostics are excluded from historical equality and separately inventoried. Python records nominal by_tower damage; Godot records HP removed. New credit probes use non-overkill hits so their per-tower values can be compared directly.
+- Source files copied byte for byte by python_runner.py; Python imports the untouched clone. Observer output only changed for the new API: variable-length status keys use the final UID component, and both observers persist frozen_tower. Godot None/-1 unset sentinels and format-specific metadata are not compared as gameplay. All other adapters remain byte-identical to 5065a12.
+- Main recipe simulations are checked against unwrapped sim.simulate. Grid uses native cell targeting; replay uses Python root events and continuous positions with Godot native statuses/fields. Both use a straight lane, 2 units/tile, +64 path offset, dt .05 and immediate projectile stubs. Lava/meteor timers use simulated time.
+- Existing differences: rounded grid targeting; continuous versus snapped/merged fields and trails; summon geometry/timing; spatial boundaries; nominal versus actual diagnostic accounting. Coupled descendants have source-based association, not individual additive causal proof.
+- Evidence is headless combat/compiler/economy plus selected native field/tower lifecycle paths. No rendered UI, real projectile flight, full game, inventory or save/load acceptance. Native 16/16 checks include real VFX field identities/merge/eviction/expiry and delayed lava/meteor controls and cancellation.
+- Supplemental lint is in validation/lint-d2d3af1.json. The isolated harness lacks the deferred UI skin dependency, and the linter does not resolve its res://../ paths. Current counts: 1 error, 2 warnings, 0 parse errors; runtime logs are the engine execution evidence.
 
-```sh
-asset-work/codex-mvp/parity/run.sh
-python3 asset-work/codex-mvp/parity/validation/verify_repeat.py
-```
+## Stacking and ownership isolation
 
-Isolation probes (from this directory):
+| Probe | Identical Python / grid / replay outcome |
+|---|---|
+| stack-burn-two-towers | fire3 applied by towers 0 and 1 to one HP-10000 enemy; tick 1 s: 2 instances, damage 5.4, credit 2.7 each. Before: 1 instance, damage 2.7 in all engines. |
+| credit-contagion | poison4{contagion:[mana1]}, owner 2, killer 9; neighbor 1 tile away; death + tick: owner 2 gets 10.035, killer 9 gets 90; infected status owner remains 2. |
+| credit-shards | ice4{ice_shards:[mana1]}, cold applied 3 times by owner 3, killer 9; neighbor .5 tile away: frozen_tower=3, owner 3 gets 10.701, killer gets 90. |
+| credit-crystal | mana5{crystallize:[mana1]}, owner 4, killer 9; neighbor .5 tile away: graft credit 2.835 to 4, killer gets 90; stones=3. |
+| Refresh / other status controls | Same tower burn stays 1 instance / 2.7; two poison owners 2 instances / 9 damage; two bleed owners 2 instances / 9 damage after 1 tile; repeated water3 wet stays 1 utility instance. |
 
-```sh
-PYTHONDONTWRITEBYTECODE=1 python3 validation/reclassify_probes.py
-XDG_DATA_HOME="$PWD/harness/userdata" XDG_CONFIG_HOME="$PWD/harness/config" XDG_CACHE_HOME="$PWD/harness/cache" godot --headless --path harness --script reclassify_probes.gd
-```
+Credit probes use victim HP=90, physical kill amount=100 and 10% armor: exactly 90 HP removed. Other enemies start at HP=10000; no overkill diagnostic ambiguity. Full recipes/actions/state are persisted in validation/reclassification-cases.json, reclassification-python.json and reclassification-godot.json. The eight new core/control cases match every historical compared metric and per-tower credit in both modes.
 
-The clone stays pinned; run.sh refreshes runtime copies byte for byte, runs Python tests/reference, Godot grid and replay, native probes, and regenerates this report and RERUN_SUMMARY_5065a12.md. Exit success requires invariant and N1–N3 contract checks; residual model/implementation differences are reported rather than silently treated as equal. RERUN_SUMMARY.md remains the historical 94a1c1a summary. Baselines are preserved in results_94a1c1a/, REPORT_94a1c1a.md, RERUN_SUMMARY_94a1c1a.md and validation/harness_94a1c1a/. The older 6c65ef4 baseline is retained.
+## R1 / R2 verification
 
-## Method and limits
+- R1 locations: repo/scripts/combat.gd:464; repo/design/rune_mechanics/mechanics/sim.py:512. chain-empty-verb (electric3, two neighbors .5 apart) now returns {seker:1} and damage 14.85 in all three; baseline Godot label was empty. Total hops/damage are unchanged.
+- R2 locations: repo/scripts/combat.gd:317; repo/design/rune_mechanics/mechanics/sim.py:421. poison1 then one tick dt=.99995 gives 0 damage in all three; dt=1 gives 4.5. Baseline Godot ticked early at .99995. Both now use 1e-9. No claim that R2 explains fixed-dt spatial residuals.
 
-- Coverage and equality denominator are unchanged: 147 cases, 110 combat. All scenario recipes, 13 runes at G1/G3/G5, six sibling permutations, depth 3/4, receiver locks, rejection cases and original direct probes are retained. The 39 separate isolation probes do not inflate those counts.
-- Default: six 120-HP enemies, spacing 0.6 tile, armor 10%, speed 1 tile/s, dt 0.05, 14 s, tower tile (6,2), range 4. World uses 2 units/tile and a straight row; the adapter adds a 64-tile path offset. Source scale/art assets are not generated or imported.
-- Native combat, compiler, tower attacks/summons, enemy statuses/speed, economy and selected real VFX field lifecycle paths run unchanged. Board/path/visual adapters are identical to the archived 94a1c1a adapters. Source-copy hashes/spec identity and Python observer comparisons with unwrapped sim.simulate guard integrity. Projectiles hit immediately; delayed lava/meteor callbacks use simulated time.
-- Replay consumes Python tower/timer root events and positions while Godot executes native movement/statuses/fields. It removes host attack selection differences, not native Vector2 precision or field semantics. Coupled descendant effects are classified by evidenced mechanisms; there is no additive per-cell causal proof for large recipes.
-- Numeric tolerance: absolute 1e-6 plus relative 1e-9. Discrete counts require equality. All-metric equality uses the historical flat metric set including host attacks and root histograms; by_tower and bleed_walk/bleed_forced are excluded because their definitions differ. Diagnostic mismatches are now separately enumerated, not discarded.
-- Godot by_tower records HP removed; Python records nominal damage. Python movement-bleed counters are pre-armor; Godot observers count actual blood damage including descendants. Mana includes kill rewards, marks and siphon; starting mana/passive regen are excluded. Fields count creations, not refreshes. Raw enemy-state metadata and root traces are persisted but are not a byte-identical cross-engine oracle.
-- Headless combat/economy/compiler and native field/tower state evidence only. Rendered visuals, real projectile/summon lifecycle, curved maps, inventory/save/load and physical play are outside this harness. Native field/tower probes cover integer field identity, merge/eviction/expiry and delayed-callback cancellation.
-- Supplemental static lint remains non-clean: the copied real vfx.gd has a deferred UI load of res://ui/skin.gd outside the isolated harness, and the linter flags res://../ paths used successfully by this pipeline. Receipts: validation/lint-before-5065a12.json and validation/lint-after-5065a12.json. These are not claimed as successful whole-project checks. Actual headless execution has no engine errors.
+## R3 — new real difference: per-death application budgets
 
-## N1–N3 economy contracts
+**Sites:** Godot repo/scripts/combat.gd:165 creates proot inside each poison instance loop (ctx_new at :27–28 creates a fresh left=16 budget); :167–168 use that owner root. Python repo/design/rune_mechanics/mechanics/sim.py:274 creates one death root and :299–300 reuse root.budget for every poison instance (also shared with shards at :287–289). Ownership is correct in both; the budget partition differs.
 
-| Finding / metric | Python before → after | Grid before → after | Replay before → after | Expected |
-|---|---:|---:|---:|---:|
-| N1 / mark-cap-distinct-towers / mana_mark | 6.3 → 7.2 | 6.3 → 7.2 | 6.3 → 7.2 | 7.2 (pass all three) |
-| N2 / siphon-two-nodes / mana_siphon | 4.658025 → 6.533025 | 4.658025 → 6.533025 | 4.658025 → 6.533025 | 6.533025 (pass all three) |
-| N3 / cap-shared-node-channels / mana | 9.675 → 8.325 | 9.675 → 8.325 | 9.675 → 8.325 | 8.325 (pass all three) |
+**Minimal saved repro:** death-budget-2-owners. Four HP-10000 enemies at exactly X=6 (spacing=0, no movement/field/spatial edge). Apply poison4{contagion:[meteor3]} to enemy 0 from towers 0 and 1. Set victim HP=90 and deal 100 physical from tower 9 at t=0. Each contagion graft has 10 applications (meteor hit, area and fragment descendants). Python shares 16 across both; Godot gets 16 per poison owner.
 
-- N1: two disjoint HP-10000 enemies at X=6/16, mark each using mana3 from towers 0/1, deal 20 physical to each at t=0. Each removes 18 HP and yields 3.6 mana; expected 7.2. Same-tower control remains 6.3.
-- N2: hit one HP-10000 enemy once with fire1{fire_hit:[mana1,mana1]}. HP removed 13.2525; each node has raw 5.56605. Two G1 caps yield 2×(2.5+(5.56605−2.5)×0.25)=6.533025.
-- N3: hit one HP-10000 enemy twice using mana3 from tower 0 at t=0. Combined raw siphon+mark is 15.3; one G3 cap yields 6+(15.3−6)×0.25=8.325. Siphon remains 7.875, mark becomes 0.45.
-- Current fix sites: repo/scripts/combat.gd:93–102,128,211; repo/design/rune_mechanics/mechanics/sim.py:206–211,247,322,553–555. Keys combine tower ID with recipe-node path; each siphon donor gets its own payout, and the mark stores its owner. Each contract is asserted independently for Python, grid and replay in results/verification.json.
+| Metric | Python | Godot grid | Godot replay |
+|---|---:|---:|---:|
+| damage | 167.2632 | 179.6112 | 179.6112 |
+| applications | 16 | 20 | 20 |
+| maximum applications per root | 16 | 10 | 10 |
+| rejected applications | 4 | 0 | 0 |
+| owner 0 damage | 44.8056 | 44.8056 | 44.8056 |
+| owner 1 damage | 32.4576 | 44.8056 | 44.8056 |
 
-## Residual divergence classification
+**Control:** death-budget-1-owners matches all compared metrics in all three. Every individual root still respects 16; this is not a cap overrun within one Godot root. The two-owner result differs by 12.348 damage. Gameplay/P2, reproducible in both Godot modes. Contract choice is unresolved: align whether a death shares one budget across statuses/shards or each status owner gets its own. Under Python reference semantics the common result would be 167.2632 / 16 applications; under Godot per-owner semantics it would be 179.6112 / 20 applications. No game fix was made.
 
-Every material compared cell in both modes and every differing excluded per-tower/bleed diagnostic is enumerated in results/divergence-classification.json. Category (a) means expected documented model or evidenced numeric-boundary behavior; category (b) means an actual implementation difference. Arithmetic within tolerance is labeled separately in the scenario tables. Nothing is automatically called expected solely because it differs.
+Godot root-histogram changes also occur in deep3, deep4 and stress-24; source attribution for those coupled descendants is not isolated. No main-suite damage changes other than the intentionally doubled same-status-two-towers case occur. R3 is recorded even though original whole-case equality does not regress.
 
-| ID | Category | Meaning | Godot / Python locations |
+## Residual evidence inventory
+
+Material main-suite cells: 1040 compared, 168 excluded diagnostics. JSON: results/divergence-classification.json. New root-budget cells carry R3 rather than being labeled only as model differences.
+
+| ID | Class | Evidence | Godot / Python |
 |---|---|---|---|
-| E1 | (a) | Documented grid-cell targeting versus continuous-radius targeting | repo/scripts/tower.gd:124 / repo/design/rune_mechanics/mechanics/sim.py:594 |
-| E2 | (a) | Documented one-cell fields, same-cell merging and cell-crossing trails versus continuous radius/distance fields | repo/scripts/combat.gd:338,385,400,418 / repo/design/rune_mechanics/mechanics/sim.py:151,439,475,481 |
-| E3 | (a) | Spatial precision, tie selection or exposure boundary; discrete outcomes remain real mismatches, not tolerance-equal | repo/scripts/combat.gd:44,461; harness/observed_enemy.gd:7,10; harness/world.gd:87 / repo/design/rune_mechanics/mechanics/sim.py:104,127,509 |
-| E4 | (a) | 2D/snapped meteor and summon placement, lead and attack lifecycle versus 1D model | repo/scripts/tower.gd:188,210,245,290; repo/scripts/combat.gd:489 / repo/design/rune_mechanics/mechanics/sim.py:538,612,633,665,699 |
-| E5 | (a) | Different diagnostic accounting definitions: HP-removed per tower; nominal versus actual bleed counters | repo/scripts/combat.gd:131; harness/observed_combat.gd:81 / repo/design/rune_mechanics/mechanics/sim.py:251,445 |
-| R1 | (b) | Pre-existing chain-label diagnostic difference: empty verb versus Python fallback seker; total hops and damage unchanged | repo/scripts/combat.gd:455; harness/stub_vfx.gd:7 / repo/design/rune_mechanics/mechanics/sim.py:507 |
-| R2 | (b) | Pre-existing DoT scheduling implementation difference: next <= 0.0001 versus <= 1e-9; Godot can tick early | repo/scripts/combat.gd:308 / repo/design/rune_mechanics/mechanics/sim.py:416 |
+| E1 | a | Documented grid-cell targeting versus continuous-radius targeting | repo/scripts/tower.gd:124 / repo/design/rune_mechanics/mechanics/sim.py:599 |
+| E2 | a | Documented one-cell fields, same-cell merging and cell-crossing trails versus continuous radius/distance fields | repo/scripts/combat.gd:347,394,409,427 / repo/design/rune_mechanics/mechanics/sim.py:156,444,480,486 |
+| E3 | a | Spatial precision, tie selection or exposure boundary; discrete outcomes remain real mismatches, not tolerance-equal | repo/scripts/combat.gd:44,470; harness/observed_enemy.gd:7,10; harness/world.gd:87 / repo/design/rune_mechanics/mechanics/sim.py:105,128,514 |
+| E4 | a | 2D/snapped meteor and summon placement, lead and attack lifecycle versus 1D model | repo/scripts/tower.gd:191,213,250,295; repo/scripts/combat.gd:498 / repo/design/rune_mechanics/mechanics/sim.py:543,617,638,670,704 |
+| E5 | a | Different diagnostic accounting definitions: HP-removed per tower; nominal versus actual bleed counters | repo/scripts/combat.gd:131; harness/observed_combat.gd:81 / repo/design/rune_mechanics/mechanics/sim.py:252,450 |
+| R3 | b | Godot death roots split by status owner; Python shares shard and poison budget. Two-owner isolation reproduces different damage | repo/scripts/combat.gd:145,165,167,168 / repo/design/rune_mechanics/mechanics/sim.py:274,287,299,300 |
 
-Residual inventory: 1060 material compared cells plus 168 definition-different diagnostic cells. R1 accounts for the empty/seker dictionary-label cells; R2 is an additional isolated scheduling finding and is not assigned as the cause of fixed-dt scenario divergences.
+## Existing regression contracts
 
-### (a) Evidence and boundaries
+B1/B2/B3 and all N1–N3 checks remain passing in all three engines. N1 mark cap=7.2; N2 two siphon nodes=6.533025; N3 shared node channels=8.325. Full invariant list: results/verification.json; native probes: results/feature-probes.json.
 
-- E1/E2 are explicit decisions in repo/design/DECISIONS.md:93–97. Grid tower range uses rounded enemy cells. Native fields snap to one cell and merge by tower/kind/cell; Python fields retain radius and separate records. trail-real-crossing moves X=6.49→6.51: Python creates 0 fields, Godot creates 1 in both modes. This is expected.
-- E3: boundary-pierce uses X=6.2/7.1 and a 0.9 range. Python damage/hops are 18.72/1; Godot grid/replay 11.7/0. The spatial coordinate representation moves the comparison across the inclusive threshold. Control X=6.25/7.125 yields 18.72/1 in all three; X=6.25/7.25 yields 11.7/0. These discrete differences are counted, never hidden under floating tolerance.
-- E3: dense initial root at spacing 0.05 yields rejected_events Python 21 versus Godot 19 while damage, successful applications and hops match. Binary-exact spacing 0.0625 yields 15 in all three; 0.125 yields 7. Differences already exist before any ticks. Native AreaImpact membership and nearest ties use Vector2; this is not evidence of a broken 16-application cap.
-- E3: summon-loop seconds 21 versus 21.05 follows the strict >18 leak boundary, native accumulated s with a +64 offset, and Python x accumulation. Replay golem/hive damage and attacks match while the stop step differs. Other no-field replay differences (v4-19, v4-20, plain-light5 and final status exposure in plain-electric5) are associated with native nearest/range/tie/exposure boundaries. Exact per-descendant attribution is not proven; these are retained as numerical-model residuals, not newly introduced regressions.
-- E4 includes snapped/slowed meteor lead, 2D multi-impact offsets and reach, adjacent summon cells, volcano initial 0.6 versus 0.5 s, and golem/beetle approach. Host differences disappear under replay where native field and numerical differences do not intervene. Aggregate E1/E2/E3/E4 cases can mix mechanisms.
-- E5 records diagnostic definitions: it does not justify a damage mismatch. Same-status-two-towers still shares one refreshed status in both engines, the documented open design question at DECISIONS.md:102–104; it is not a new cross-engine divergence.
+## Rerun and integrity
 
-### (b) R1 — chain label fallback (pre-existing, diagnostic)
+From this parity directory: `./run.sh`, then `python3 validation/verify_repeat.py`. The main command runs reference and Godot main/isolated suites and generates reports. The repeat verifier compares deterministic raw results, reports and source hashes, checks the exact commit and clean tracked clone, both historical baseline manifests and the allowed adapter diff. Receipts: validation/repeat-verification.json and validation/repeat-run.log.
 
-**Locations:** Godot repo/scripts/combat.gd:455 emits p.get("verb", ""); observer harness/stub_vfx.gd:7 counts that exact label. Python repo/design/rune_mechanics/mechanics/sim.py:507 uses p.verb or "seker". Both compilers return the same empty verb; this is a runtime diagnostic difference, not a compiler or damage defect.
-
-**Minimal repro:** validation case chain-empty-verb: two HP-10000 enemies X=6/6.5, one electric3 event on enemy 0. Python hops {"seker":1}; grid/replay hops {"":1}. All return damage 14.85 and total hops 1. **Expected parity value:** one hop under the common reference label "seker". Main-suite affected cases: wet-electric, wet-electric-alone, plain-electric3, plain-electric5. The difference exists in the preserved 94a1c1a results and unchanged source; severity is diagnostic/P3, no gameplay regression established.
-
-### (b) R2 — early DoT tick threshold (pre-existing)
-
-**Locations:** Godot repo/scripts/combat.gd:308 uses next <= 0.0001; Python repo/design/rune_mechanics/mechanics/sim.py:416 uses next <= 1e-9. These branches are unchanged since 94a1c1a.
-
-**Minimal repro:** validation case dot-tick-threshold-0.99995: one HP-10000 enemy, armor 10%, apply poison1 at t=0, tick once with dt=0.99995. next is about 0.00005: Python damage 0; grid/replay damage 4.5. **Expected value for a one-second tick contract:** 0 before 1 s (within the reference 1e-9 tolerance); at dt=1.0 all return 4.5. This is a real scheduling-policy difference, not a spatial model difference. The original harness uses dt=0.05 and does not reproduce this early tick there; do not attribute unrelated residuals to it. No game code was fixed.
-
-## Targeted controls and validation
-
-- B1 push-chain-stale-position: damage 18, hops 0 in all three. B2 trail-spurious-cell-drop: no fields. B3 lethal G1/G3 siphon: 0.6/0.75 plus kill reward 2. Same-node cap, distinct-tower cap and second rollover: 3.09/4.86/4.86. Mark overkill payout 0.3; one or two crystal marks both give 3 stones.
-- Native field/tower probes remain 16/16: field cap 8, real VFX integer identity survives mutation/merge and clears on eviction/expiry; queued meteor and lava attacks deal damage in controls and zero after native rune clear. All six sibling permutations are identical inside each engine; depth/budget checks pass.
-- Separate isolation receipts: validation/reclassification-cases.json, reclassification-python.json, reclassification-godot.json, reclassification-run.log. The 39 cases include 18 status-expiry controls; all 18 have matching damage. Two real differences above are reported rather than asserted as passing equality.
-- Repeat receipts: validation/repeat-verification.json (written after the documented repeat run), validation/repeat-run.log. Baseline hashes: validation/baseline_94a1c1a_sha256.json. Current source provenance: results/provenance.json. Clone cleanliness and exact copied-source identity are independently checked by the repeat verifier.
+Preserved 5065a12 baseline: results_5065a12/, REPORT_5065a12.md, RERUN_SUMMARY_5065a12.md and validation/harness_5065a12/; SHA256 receipt validation/baseline_5065a12_sha256.json. Older 94a1c1a and 6c65ef4 artifacts remain. No commits/pushes. All task writes stay inside this parity directory.
 
 ## Scenario tables
-
-The unchanged 147 cases follow. Absent dictionary entries are zero. Per-root histograms exclude empty roots; full raw state persists in results/python.json and results/godot.json.
 
 ### v4-01 (scenario)
 
@@ -1309,11 +1287,10 @@ Recipes: `water2`, `electric3`
 | by_element.water | 56.7 | 56.7 | 0% | 56.7 | 0% | equal |
 | by_element.electric | 186.57 | 186.57 | 0% | 186.57 | 0% | tolerance (floating arithmetic) |
 | statuses.wet | 7 | 7 | 0% | 7 | 0% | equal |
-| hops.seker | 16 | 0 | -100.000% | 0 | -100.000% | (b) implementation difference: R1 |
+| hops.seker | 16 | 16 | 0% | 16 | 0% | equal |
 | roots.with_applications | 15 | 15 | 0% | 15 | 0% | equal |
 | roots.using_1_applications | 7 | 7 | 0% | 7 | 0% | equal |
 | roots.using_5_applications | 8 | 8 | 0% | 8 | 0% | equal |
-| hops. | 0 | 16 | new (ref=0) | 16 | new (ref=0) | (b) implementation difference: R1 |
 
 ### wet-electric-alone (comparison)
 
@@ -1344,10 +1321,9 @@ Recipes: `electric3`
 | finite | true | true | 0 | true | 0 | equal |
 | hops.total | 16 | 16 | 0% | 16 | 0% | equal |
 | by_element.electric | 149.22 | 149.22 | 0% | 149.22 | 0% | tolerance (floating arithmetic) |
-| hops.seker | 16 | 0 | -100.000% | 0 | -100.000% | (b) implementation difference: R1 |
+| hops.seker | 16 | 16 | 0% | 16 | 0% | equal |
 | roots.with_applications | 8 | 8 | 0% | 8 | 0% | equal |
 | roots.using_5_applications | 8 | 8 | 0% | 8 | 0% | equal |
-| hops. | 0 | 16 | new (ref=0) | 16 | new (ref=0) | (b) implementation difference: R1 |
 
 ### rej-locked-shards (scenario)
 
@@ -1496,17 +1472,17 @@ Recipes: `fire5{fire_hit:[electric5{chain:[ice5{chill:[poison5,blood5]},stone3]}
 | hops.durum yandakine geçerek | 9 | 10 | +11.111% | 10 | +11.111% | (a) model/numerical difference: E2, E1, E4; (a) model/numerical difference: E2 |
 | hops.durum yandakine atlayarak | 8 | 8 | 0% | 8 | 0% | equal |
 | fields.fire_trail | 16 | 3 | -81.250% | 3 | -81.250% | (a) model/numerical difference: E2, E1, E4; (a) model/numerical difference: E2 |
-| roots.with_applications | 51 | 44 | -13.725% | 56 | +9.804% | (a) model/numerical difference: E2, E1, E4; (a) model/numerical difference: E2 |
-| roots.using_1_applications | 28 | 23 | -17.857% | 36 | +28.571% | (a) model/numerical difference: E2, E1, E4; (a) model/numerical difference: E2 |
-| roots.using_2_applications | 3 | 4 | +33.333% | 4 | +33.333% | (a) model/numerical difference: E2, E1, E4; (a) model/numerical difference: E2 |
-| roots.using_3_applications | 3 | 0 | -100.000% | 0 | -100.000% | (a) model/numerical difference: E2, E1, E4; (a) model/numerical difference: E2 |
-| roots.using_4_applications | 2 | 0 | -100.000% | 0 | -100.000% | (a) model/numerical difference: E2, E1, E4; (a) model/numerical difference: E2 |
+| roots.with_applications | 51 | 48 | -5.882% | 60 | +17.647% | (b) implementation difference: R3, E2, E1, E4; (b) implementation difference: R3, E2 |
+| roots.using_1_applications | 28 | 31 | +10.714% | 44 | +57.143% | (b) implementation difference: R3, E2, E1, E4; (b) implementation difference: R3, E2 |
+| roots.using_2_applications | 3 | 0 | -100.000% | 0 | -100.000% | (b) implementation difference: R3, E2, E1, E4; (b) implementation difference: R3, E2 |
+| roots.using_3_applications | 3 | 0 | -100.000% | 0 | -100.000% | (b) implementation difference: R3, E2, E1, E4; (b) implementation difference: R3, E2 |
+| roots.using_4_applications | 2 | 0 | -100.000% | 0 | -100.000% | (b) implementation difference: R3, E2, E1, E4; (b) implementation difference: R3, E2 |
 | roots.using_5_applications | 11 | 11 | 0% | 11 | 0% | equal |
-| roots.using_6_applications | 2 | 3 | +50.000% | 3 | +50.000% | (a) model/numerical difference: E2, E1, E4; (a) model/numerical difference: E2 |
-| roots.using_11_applications | 1 | 0 | -100.000% | 0 | -100.000% | (a) model/numerical difference: E2, E1, E4; (a) model/numerical difference: E2 |
+| roots.using_6_applications | 2 | 3 | +50.000% | 3 | +50.000% | (b) implementation difference: R3, E2, E1, E4; (b) implementation difference: R3, E2 |
+| roots.using_11_applications | 1 | 0 | -100.000% | 0 | -100.000% | (b) implementation difference: R3, E2, E1, E4; (b) implementation difference: R3, E2 |
 | roots.using_13_applications | 1 | 1 | 0% | 1 | 0% | equal |
-| roots.using_8_applications | 0 | 1 | new (ref=0) | 0 | 0% | (a) model/numerical difference: E2, E1, E4 |
-| roots.using_9_applications | 0 | 1 | new (ref=0) | 1 | new (ref=0) | (a) model/numerical difference: E2, E1, E4; (a) model/numerical difference: E2 |
+| roots.using_8_applications | 0 | 1 | new (ref=0) | 0 | 0% | (b) implementation difference: R3, E2, E1, E4 |
+| roots.using_9_applications | 0 | 1 | new (ref=0) | 1 | new (ref=0) | (b) implementation difference: R3, E2, E1, E4; (b) implementation difference: R3, E2 |
 
 ### plain-fire1 (plain)
 
@@ -1769,10 +1745,9 @@ Recipes: `electric3`
 | finite | true | true | 0 | true | 0 | equal |
 | hops.total | 16 | 16 | 0% | 16 | 0% | equal |
 | by_element.electric | 149.22 | 149.22 | 0% | 149.22 | 0% | tolerance (floating arithmetic) |
-| hops.seker | 16 | 0 | -100.000% | 0 | -100.000% | (b) implementation difference: R1 |
+| hops.seker | 16 | 16 | 0% | 16 | 0% | equal |
 | roots.with_applications | 8 | 8 | 0% | 8 | 0% | equal |
 | roots.using_5_applications | 8 | 8 | 0% | 8 | 0% | equal |
-| hops. | 0 | 16 | new (ref=0) | 16 | new (ref=0) | (b) implementation difference: R1 |
 
 ### plain-electric5 (plain)
 
@@ -1804,10 +1779,9 @@ Recipes: `electric5`
 | hops.total | 24 | 24 | 0% | 24 | 0% | equal |
 | by_element.electric | 322.65 | 322.65 | 0% | 322.65 | 0% | tolerance (floating arithmetic) |
 | statuses.charge | 32 | 32 | 0% | 32 | 0% | equal |
-| hops.seker | 24 | 0 | -100.000% | 0 | -100.000% | (b) implementation difference: R1 |
+| hops.seker | 24 | 24 | 0% | 24 | 0% | equal |
 | roots.with_applications | 8 | 8 | 0% | 8 | 0% | equal |
 | roots.using_7_applications | 8 | 8 | 0% | 8 | 0% | equal |
-| hops. | 0 | 24 | new (ref=0) | 24 | new (ref=0) | (b) implementation difference: R1 |
 
 ### plain-poison1 (plain)
 
@@ -3116,15 +3090,14 @@ Recipes: `fire5{burn:[electric5{chain:[ice5{freeze:[poison4]}]}]}`
 | hops.durum yandakine atlayarak | 24 | 22 | -8.333% | 24 | 0% | (a) model/numerical difference: E2, E1 |
 | hops.buz parçası düşer | 3 | 2 | -33.333% | 3 | 0% | (a) model/numerical difference: E2, E1 |
 | fields.fire_trail | 62 | 13 | -79.032% | 13 | -79.032% | (a) model/numerical difference: E2, E1; (a) model/numerical difference: E2 |
-| roots.with_applications | 101 | 107 | +5.941% | 97 | -3.960% | (a) model/numerical difference: E2, E1; (a) model/numerical difference: E2 |
-| roots.using_1_applications | 90 | 98 | +8.889% | 86 | -4.444% | (a) model/numerical difference: E2, E1; (a) model/numerical difference: E2 |
-| roots.using_2_applications | 2 | 0 | -100.000% | 1 | -50.000% | (a) model/numerical difference: E2, E1; (a) model/numerical difference: E2 |
-| roots.using_5_applications | 1 | 0 | -100.000% | 1 | 0% | (a) model/numerical difference: E2, E1 |
+| roots.with_applications | 101 | 108 | +6.931% | 99 | -1.980% | (b) implementation difference: R3, E2, E1; (b) implementation difference: R3, E2 |
+| roots.using_1_applications | 90 | 99 | +10.000% | 89 | -1.111% | (b) implementation difference: R3, E2, E1; (b) implementation difference: R3, E2 |
+| roots.using_2_applications | 2 | 1 | -50.000% | 1 | -50.000% | (b) implementation difference: R3, E2, E1; (b) implementation difference: R3, E2 |
+| roots.using_5_applications | 1 | 0 | -100.000% | 1 | 0% | (b) implementation difference: R3, E2, E1 |
 | roots.using_6_applications | 2 | 2 | 0% | 2 | 0% | equal |
 | roots.using_7_applications | 4 | 4 | 0% | 4 | 0% | equal |
 | roots.using_8_applications | 1 | 1 | 0% | 1 | 0% | equal |
 | roots.using_9_applications | 1 | 1 | 0% | 1 | 0% | equal |
-| roots.using_3_applications | 0 | 1 | new (ref=0) | 1 | new (ref=0) | (a) model/numerical difference: E2, E1; (a) model/numerical difference: E2 |
 
 ### deep4 (probe)
 
@@ -3168,15 +3141,14 @@ Recipes: `fire5{burn:[electric5{chain:[ice5{freeze:[poison4{poison_tick:[blood2]
 | hops.durum yandakine atlayarak | 23 | 22 | -4.348% | 24 | +4.348% | (a) model/numerical difference: E2, E1; (a) model/numerical difference: E2 |
 | hops.buz parçası düşer | 3 | 3 | 0% | 3 | 0% | equal |
 | fields.fire_trail | 62 | 13 | -79.032% | 13 | -79.032% | (a) model/numerical difference: E2, E1; (a) model/numerical difference: E2 |
-| roots.with_applications | 99 | 104 | +5.051% | 95 | -4.040% | (a) model/numerical difference: E2, E1; (a) model/numerical difference: E2 |
-| roots.using_1_applications | 88 | 94 | +6.818% | 84 | -4.545% | (a) model/numerical difference: E2, E1; (a) model/numerical difference: E2 |
-| roots.using_2_applications | 3 | 1 | -66.667% | 2 | -33.333% | (a) model/numerical difference: E2, E1; (a) model/numerical difference: E2 |
+| roots.with_applications | 99 | 106 | +7.071% | 97 | -2.020% | (b) implementation difference: R3, E2, E1; (b) implementation difference: R3, E2 |
+| roots.using_1_applications | 88 | 97 | +10.227% | 88 | 0% | (b) implementation difference: R3, E2, E1 |
+| roots.using_2_applications | 3 | 1 | -66.667% | 0 | -100.000% | (b) implementation difference: R3, E2, E1; (b) implementation difference: R3, E2 |
 | roots.using_6_applications | 2 | 2 | 0% | 2 | 0% | equal |
 | roots.using_7_applications | 4 | 4 | 0% | 4 | 0% | equal |
 | roots.using_8_applications | 1 | 1 | 0% | 1 | 0% | equal |
 | roots.using_9_applications | 1 | 1 | 0% | 1 | 0% | equal |
-| roots.using_3_applications | 0 | 1 | new (ref=0) | 0 | 0% | (a) model/numerical difference: E2, E1 |
-| roots.using_4_applications | 0 | 0 | 0% | 1 | new (ref=0) | (a) model/numerical difference: E2 |
+| roots.using_4_applications | 0 | 0 | 0% | 1 | new (ref=0) | (b) implementation difference: R3, E2 |
 
 ### summon-loop-volcano (probe)
 
@@ -3282,8 +3254,8 @@ Actions: `[{"kind":"status","recipe":"fire3","status":"burn","tower":0,"repeat":
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 2.7 | 2.7 | 0% | 2.7 | 0% | equal |
-| damage_capped | 2.7 | 2.7 | 0% | 2.7 | 0% | equal |
+| damage | 5.4 | 5.4 | 0% | 5.4 | 0% | equal |
+| damage_capped | 5.4 | 5.4 | 0% | 5.4 | 0% | equal |
 | kills | 0 | 0 | 0% | 0 | 0% | equal |
 | mana | 0 | 0 | 0% | 0 | 0% | equal |
 | mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
@@ -3295,19 +3267,19 @@ Actions: `[{"kind":"status","recipe":"fire3","status":"burn","tower":0,"repeat":
 | max_gen | 0 | 0 | 0% | 0 | 0% | equal |
 | max_status_gen | 0 | 0 | 0% | 0 | 0% | equal |
 | max_budget_used | 1 | 1 | 0% | 1 | 0% | equal |
-| applications | 1 | 1 | 0% | 1 | 0% | equal |
+| applications | 2 | 2 | 0% | 2 | 0% | equal |
 | rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
 | spread_status | 0 | 0 | 0% | 0 | 0% | equal |
-| status_instances | 1 | 1 | 0% | 1 | 0% | equal |
+| status_instances | 2 | 2 | 0% | 2 | 0% | equal |
 | pushed_tiles | 0 | 0 | 0% | 0 | 0% | equal |
 | seconds | 1 | 1 | 0% | 1 | 0% | equal |
 | host_attacks | 0 | 0 | 0% | 0 | 0% | equal |
 | finite | true | true | 0 | true | 0 | equal |
 | hops.total | 0 | 0 | 0% | 0 | 0% | equal |
-| by_element.fire | 2.7 | 2.7 | 0% | 2.7 | 0% | equal |
+| by_element.fire | 5.4 | 5.4 | 0% | 5.4 | 0% | equal |
 | statuses.burn | 2 | 2 | 0% | 2 | 0% | equal |
-| roots.with_applications | 1 | 1 | 0% | 1 | 0% | equal |
-| roots.using_1_applications | 1 | 1 | 0% | 1 | 0% | equal |
+| roots.with_applications | 2 | 2 | 0% | 2 | 0% | equal |
+| roots.using_1_applications | 2 | 2 | 0% | 2 | 0% | equal |
 
 ### forced-move-bleed (direct)
 
@@ -4327,63 +4299,71 @@ Recipes: `mana4{crystallize:[electric3]}`
 |---|---:|---:|---:|---:|---:|---|
 | compile error | locked_on_receiver | locked_on_receiver | — | locked_on_receiver | — | equal |
 
-## Commit delta: 94a1c1a → 5065a12
-
-Same 147 cases / 110 combat cases. Full metric and raw-state changes are in results/commit-deltas.json and results/raw-commit-deltas.json. No parity transitions remain in results/parity-transitions.json.
+## Commit delta: 5065a12 → d2d3af1
 
 | Stream | Materially changed cases / 110 | Material metric changes |
 |---|---:|---:|
-| Python | 7 | 16 |
-| grid | 7 | 16 |
-| replay | 7 | 16 |
+| Python | 1 | 7 |
+| grid | 8 | 25 |
+| replay | 8 | 24 |
+
+New mismatching cells: 0; repaired cells: 20. Full raw-state delta: results/raw-commit-deltas.json.
 
 | Stream / case | Metric | Before → after | Reason |
 |---|---|---:|---|
-| Python / mana-mark | mana | 84.745 → 70.21 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| Python / mana-mark | mana_mark | 32.12 → 24.665 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| Python / mana-mark | mana_siphon | 50.625 → 43.545 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| Python / mana-crystal | mana | 209.1375 → 160.0875 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| Python / mana-crystal | mana_mark | 91.6875 → 68.8875 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| Python / mana-crystal | mana_siphon | 109.45 → 83.2 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| Python / plain-mana3 | mana | 58.5 → 51.75 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| Python / plain-mana3 | mana_siphon | 49.5 → 42.75 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| Python / plain-mana5 | mana | 147.18 → 115.995 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| Python / plain-mana5 | mana_siphon | 105.6 → 74.415 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| Python / mark-cap-distinct-towers | mana | 6.3 → 7.2 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| Python / mark-cap-distinct-towers | mana_mark | 6.3 → 7.2 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| Python / cap-shared-node-channels | mana | 9.675 → 8.325 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| Python / cap-shared-node-channels | mana_mark | 1.8 → 0.45 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| Python / siphon-two-nodes | mana | 4.658025 → 6.533025 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| Python / siphon-two-nodes | mana_siphon | 4.658025 → 6.533025 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| grid / cap-shared-node-channels | mana | 9.675 → 8.325 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| grid / cap-shared-node-channels | mana_mark | 1.8 → 0.45 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| grid / mana-crystal | mana | 207.03 → 157.0425 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| grid / mana-crystal | mana_mark | 89.58 → 64.38 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| grid / mana-crystal | mana_siphon | 109.45 → 84.6625 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| grid / mana-mark | mana | 84.745 → 70.21 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| grid / mana-mark | mana_mark | 32.12 → 24.665 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| grid / mana-mark | mana_siphon | 50.625 → 43.545 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| grid / mark-cap-distinct-towers | mana | 6.3 → 7.2 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| grid / mark-cap-distinct-towers | mana_mark | 6.3 → 7.2 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| grid / plain-mana3 | mana | 58.5 → 51.75 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| grid / plain-mana3 | mana_siphon | 49.5 → 42.75 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| grid / plain-mana5 | mana | 147.18 → 115.995 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| grid / plain-mana5 | mana_siphon | 105.6 → 74.415 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| grid / siphon-two-nodes | mana | 4.658025 → 6.533025 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| grid / siphon-two-nodes | mana_siphon | 4.658025 → 6.533025 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| replay / cap-shared-node-channels | mana | 9.675 → 8.325 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| replay / cap-shared-node-channels | mana_mark | 1.8 → 0.45 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| replay / mana-crystal | mana | 206.4675 → 159.6675 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| replay / mana-crystal | mana_mark | 89.0175 → 68.0175 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| replay / mana-crystal | mana_siphon | 109.45 → 83.65 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| replay / mana-mark | mana | 84.745 → 70.21 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| replay / mana-mark | mana_mark | 32.12 → 24.665 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| replay / mana-mark | mana_siphon | 50.625 → 43.545 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| replay / mark-cap-distinct-towers | mana | 6.3 → 7.2 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| replay / mark-cap-distinct-towers | mana_mark | 6.3 → 7.2 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| replay / plain-mana3 | mana | 58.5 → 51.75 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| replay / plain-mana3 | mana_siphon | 49.5 → 42.75 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| replay / plain-mana5 | mana | 147.18 → 115.995 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| replay / plain-mana5 | mana_siphon | 105.6 → 74.415 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| replay / siphon-two-nodes | mana | 4.658025 → 6.533025 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
-| replay / siphon-two-nodes | mana_siphon | 4.658025 → 6.533025 | N1-N3 producing-node cap repair; economy channels now share one node bucket |
+| Python / same-status-two-towers | applications | 1 → 2 | Per-tower DoT stacking intentionally doubles burn instances and tick damage |
+| Python / same-status-two-towers | by_element.fire | 2.7 → 5.4 | Per-tower DoT stacking intentionally doubles burn instances and tick damage |
+| Python / same-status-two-towers | damage | 2.7 → 5.4 | Per-tower DoT stacking intentionally doubles burn instances and tick damage |
+| Python / same-status-two-towers | damage_capped | 2.7 → 5.4 | Per-tower DoT stacking intentionally doubles burn instances and tick damage |
+| Python / same-status-two-towers | roots.using_1_applications | 1 → 2 | Per-tower DoT stacking intentionally doubles burn instances and tick damage |
+| Python / same-status-two-towers | roots.with_applications | 1 → 2 | Per-tower DoT stacking intentionally doubles burn instances and tick damage |
+| Python / same-status-two-towers | status_instances | 1 → 2 | Per-tower DoT stacking intentionally doubles burn instances and tick damage |
+| grid / deep3 | roots.using_1_applications | 98 → 99 | Godot now separates owner death roots (R3); coupled histogram attribution is source-based |
+| grid / deep3 | roots.using_2_applications | 0 → 1 | Godot now separates owner death roots (R3); coupled histogram attribution is source-based |
+| grid / deep3 | roots.using_3_applications | 1 → 0 | Godot now separates owner death roots (R3); coupled histogram attribution is source-based |
+| grid / deep3 | roots.with_applications | 107 → 108 | Godot now separates owner death roots (R3); coupled histogram attribution is source-based |
+| grid / deep4 | roots.using_1_applications | 94 → 97 | Godot now separates owner death roots (R3); coupled histogram attribution is source-based |
+| grid / deep4 | roots.using_3_applications | 1 → 0 | Godot now separates owner death roots (R3); coupled histogram attribution is source-based |
+| grid / deep4 | roots.with_applications | 104 → 106 | Godot now separates owner death roots (R3); coupled histogram attribution is source-based |
+| grid / plain-electric3 | hops. | 16 → 0 | R1 fallback label alignment; total hops unchanged |
+| grid / plain-electric3 | hops.seker | 0 → 16 | R1 fallback label alignment; total hops unchanged |
+| grid / plain-electric5 | hops. | 24 → 0 | R1 fallback label alignment; total hops unchanged |
+| grid / plain-electric5 | hops.seker | 0 → 24 | R1 fallback label alignment; total hops unchanged |
+| grid / same-status-two-towers | applications | 1 → 2 | Per-tower DoT stacking intentionally doubles burn instances and tick damage |
+| grid / same-status-two-towers | by_element.fire | 2.7 → 5.4 | Per-tower DoT stacking intentionally doubles burn instances and tick damage |
+| grid / same-status-two-towers | damage | 2.7 → 5.4 | Per-tower DoT stacking intentionally doubles burn instances and tick damage |
+| grid / same-status-two-towers | damage_capped | 2.7 → 5.4 | Per-tower DoT stacking intentionally doubles burn instances and tick damage |
+| grid / same-status-two-towers | roots.using_1_applications | 1 → 2 | Per-tower DoT stacking intentionally doubles burn instances and tick damage |
+| grid / same-status-two-towers | roots.with_applications | 1 → 2 | Per-tower DoT stacking intentionally doubles burn instances and tick damage |
+| grid / same-status-two-towers | status_instances | 1 → 2 | Per-tower DoT stacking intentionally doubles burn instances and tick damage |
+| grid / stress-24 | roots.using_1_applications | 23 → 31 | Godot now separates owner death roots (R3); coupled histogram attribution is source-based |
+| grid / stress-24 | roots.using_2_applications | 4 → 0 | Godot now separates owner death roots (R3); coupled histogram attribution is source-based |
+| grid / stress-24 | roots.with_applications | 44 → 48 | Godot now separates owner death roots (R3); coupled histogram attribution is source-based |
+| grid / wet-electric | hops. | 16 → 0 | R1 fallback label alignment; total hops unchanged |
+| grid / wet-electric | hops.seker | 0 → 16 | R1 fallback label alignment; total hops unchanged |
+| grid / wet-electric-alone | hops. | 16 → 0 | R1 fallback label alignment; total hops unchanged |
+| grid / wet-electric-alone | hops.seker | 0 → 16 | R1 fallback label alignment; total hops unchanged |
+| replay / deep3 | roots.using_1_applications | 86 → 89 | Godot now separates owner death roots (R3); coupled histogram attribution is source-based |
+| replay / deep3 | roots.using_3_applications | 1 → 0 | Godot now separates owner death roots (R3); coupled histogram attribution is source-based |
+| replay / deep3 | roots.with_applications | 97 → 99 | Godot now separates owner death roots (R3); coupled histogram attribution is source-based |
+| replay / deep4 | roots.using_1_applications | 84 → 88 | Godot now separates owner death roots (R3); coupled histogram attribution is source-based |
+| replay / deep4 | roots.using_2_applications | 2 → 0 | Godot now separates owner death roots (R3); coupled histogram attribution is source-based |
+| replay / deep4 | roots.with_applications | 95 → 97 | Godot now separates owner death roots (R3); coupled histogram attribution is source-based |
+| replay / plain-electric3 | hops. | 16 → 0 | R1 fallback label alignment; total hops unchanged |
+| replay / plain-electric3 | hops.seker | 0 → 16 | R1 fallback label alignment; total hops unchanged |
+| replay / plain-electric5 | hops. | 24 → 0 | R1 fallback label alignment; total hops unchanged |
+| replay / plain-electric5 | hops.seker | 0 → 24 | R1 fallback label alignment; total hops unchanged |
+| replay / same-status-two-towers | applications | 1 → 2 | Per-tower DoT stacking intentionally doubles burn instances and tick damage |
+| replay / same-status-two-towers | by_element.fire | 2.7 → 5.4 | Per-tower DoT stacking intentionally doubles burn instances and tick damage |
+| replay / same-status-two-towers | damage | 2.7 → 5.4 | Per-tower DoT stacking intentionally doubles burn instances and tick damage |
+| replay / same-status-two-towers | damage_capped | 2.7 → 5.4 | Per-tower DoT stacking intentionally doubles burn instances and tick damage |
+| replay / same-status-two-towers | roots.using_1_applications | 1 → 2 | Per-tower DoT stacking intentionally doubles burn instances and tick damage |
+| replay / same-status-two-towers | roots.with_applications | 1 → 2 | Per-tower DoT stacking intentionally doubles burn instances and tick damage |
+| replay / same-status-two-towers | status_instances | 1 → 2 | Per-tower DoT stacking intentionally doubles burn instances and tick damage |
+| replay / stress-24 | roots.using_1_applications | 36 → 44 | Godot now separates owner death roots (R3); coupled histogram attribution is source-based |
+| replay / stress-24 | roots.using_2_applications | 4 → 0 | Godot now separates owner death roots (R3); coupled histogram attribution is source-based |
+| replay / stress-24 | roots.with_applications | 56 → 60 | Godot now separates owner death roots (R3); coupled histogram attribution is source-based |
+| replay / wet-electric | hops. | 16 → 0 | R1 fallback label alignment; total hops unchanged |
+| replay / wet-electric | hops.seker | 0 → 16 | R1 fallback label alignment; total hops unchanged |
+| replay / wet-electric-alone | hops. | 16 → 0 | R1 fallback label alignment; total hops unchanged |
+| replay / wet-electric-alone | hops.seker | 0 → 16 | R1 fallback label alignment; total hops unchanged |

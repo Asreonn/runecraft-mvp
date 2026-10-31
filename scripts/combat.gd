@@ -138,11 +138,13 @@ func kill(e, ctx: Dictionary) -> void:
 	e.alive = false
 	game.on_enemy_killed(e)
 	# Every death effect is credited to the tower that OWNS it (the freezer, the poisoner, the marker), not to the
-	# tower that happened to land the killing blow (damage, Mana caps and DPS stay attributable).
+	# tower that happened to land the killing blow (damage, Mana caps and DPS stay attributable). Shards and
+	# contagion of one death still share ONE application budget, like the reference (parity R3).
+	var death_budget = ctx_new(int(ctx.tower), 0).budget
 	# frozen-death shards: only when the freezing op carries shards (source authority)
 	if game.now < e.frozen_until and e.frozen_by != null and float(e.frozen_by.params.get("shards", 0)) > 0:
 		var op = e.frozen_by
-		var root := ctx_new(int(e.frozen_tower) if e.frozen_tower >= 0 else int(ctx.tower), 0)
+		var root := ctx_new(int(e.frozen_tower) if e.frozen_tower >= 0 else int(ctx.tower), 0, death_budget)
 		var subs: Array = op.slots.get("shards", [])
 		var seek := subs.any(func(x): return x.family == "ChainTransfer")
 		var hit := {e.eid: true}
@@ -162,7 +164,7 @@ func kill(e, ctx: Dictionary) -> void:
 			var tgt = nearest(e.tile_pos(), {e.eid: true}, 1.5)
 			if tgt != null:
 				var stacks := maxi(1, ceili(float(v.stacks) * float(v.op.params.contagion)))
-				var proot := ctx_new(int(v.tower), 0)
+				var proot := ctx_new(int(v.tower), 0, death_budget)
 				game.vfx.link(e.global_position, tgt.global_position, "poison", "bulaşma")
 				apply_status(tgt, v.op, child_ctx(proot, 1, 1.0), stacks)
 				run_event(v.op.slots.get("infect", []), tgt, tgt.tile_pos(), child_ctx(proot, 1, 1.0))
