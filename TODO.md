@@ -50,6 +50,7 @@ Son güncelleme: 2026-10-31
 - [x] Penpot tasarımı Godot HUD'unda: 124 Penpot export'u (2×) → `assets/ui/`, 9-slice StyleBox (`ui/tex_box.gd`), Cinzel başlık fontu
 
 ## D. Teslim
+- [x] Repo public yapıldı; AI incelemesi için `docs/PROJECT_OVERVIEW.md`, `design/` (mekanik doküman, referans uygulama + testler, raporlar, GDD) eklendi
 - [x] Codex ile temizlik: 21 script temizlendi, 3 kullanılmayan dosya silindi; 142 kullanılmayan dosya release dışı (harita 40 tohumda birebir, oyun/kayıt sonuçları aynı)
 - [x] GitHub'a temiz, private yükleme: https://github.com/Asreonn/runecraft-mvp (release kopyası `asset-work/claude-tileset/release/runecraft-mvp/`)
 

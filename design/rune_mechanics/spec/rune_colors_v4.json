@@ -1,0 +1,85 @@
+{
+ "comment": "v4.1 key colours per rune. All other palette slots are derived as small tonal steps (like the user's standartTower ramps): frame top/bottom = frame +/- a small step; core top/bottom likewise; the cross groove is a 5-step ramp core -> glow -> hot centre; groove rims get a light bleed.",
+ "step": 0.1,
+ "dormant_glow_mix": 0.45,
+ "runes": {
+  "ates": {
+   "name": "Ateş",
+   "frame": "#6B2A18",
+   "core": "#F06A24",
+   "glow": "#FFD860"
+  },
+  "buz": {
+   "name": "Buz",
+   "frame": "#4E6A82",
+   "core": "#A6E2F7",
+   "glow": "#FFFFFF"
+  },
+  "elektrik": {
+   "name": "Elektrik",
+   "frame": "#3A2A66",
+   "core": "#8C60F2",
+   "glow": "#E8F0FF"
+  },
+  "zehir": {
+   "name": "Zehir",
+   "frame": "#2E4620",
+   "core": "#6CC23A",
+   "glow": "#E2FF6E"
+  },
+  "su": {
+   "name": "Su",
+   "frame": "#213B66",
+   "core": "#3A88E8",
+   "glow": "#A8F4FF"
+  },
+  "tas": {
+   "name": "Taş",
+   "frame": "#54493D",
+   "core": "#A08C70",
+   "glow": "#FFC870"
+  },
+  "isik": {
+   "name": "Işık",
+   "frame": "#7A5E20",
+   "core": "#F6E08A",
+   "glow": "#FFFFFF"
+  },
+  "kan": {
+   "name": "Kan",
+   "frame": "#44141B",
+   "core": "#C02238",
+   "glow": "#FF8E8E"
+  },
+  "meteor": {
+   "name": "Meteor",
+   "frame": "#383344",
+   "core": "#6A6080",
+   "glow": "#FF74DA"
+  },
+  "volkan": {
+   "name": "Volkan",
+   "frame": "#2C2628",
+   "core": "#433A3C",
+   "glow": "#FF6A1A"
+  },
+  "golem": {
+   "name": "Golem",
+   "frame": "#525C4F",
+   "core": "#8C9E86",
+   "glow": "#6FF0D0"
+  },
+  "kovan": {
+   "name": "Kovan",
+   "frame": "#52340F",
+   "core": "#E39B1F",
+   "glow": "#FFE9A0"
+  },
+  "mana": {
+   "name": "Mana",
+   "frame": "#17505A",
+   "core": "#2CC6BE",
+   "glow": "#D6FFF4"
+  }
+ }
+}

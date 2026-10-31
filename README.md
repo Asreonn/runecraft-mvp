@@ -1,6 +1,8 @@
 # RuneCraft MVP
 
-Private prototype — all rights reserved.
+Public prototype — source available for review, all rights reserved (no open-source licence yet).
+
+**Start here:** [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) (architecture, systems, gaps, open questions) · [TODO.md](TODO.md) (all requests and their status, Turkish) · [design/](design/) (rune mechanics design, reference implementation, original GDD)
 
 RuneCraft is a voxel tower-defense prototype for Godot 4. Build towers, socket
 runes and defend a castle through escalating enemy waves.
@@ -70,5 +72,7 @@ Noto and Cinzel fonts are distributed under the SIL Open Font License (OFL).
 Retain their copyright and licence texts with the fonts. Voxel assets were made
 for this project. Third-party font terms remain applicable.
 
-**Private prototype — all rights reserved.** This repository grants no general
+**Public prototype — source available for review, all rights reserved (no open-source licence yet).
+
+**Start here:** [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) (architecture, systems, gaps, open questions) · [TODO.md](TODO.md) (all requests and their status, Turkish) · [design/](design/) (rune mechanics design, reference implementation, original GDD)** This repository grants no general
 licence to copy or redistribute the game or its project assets.

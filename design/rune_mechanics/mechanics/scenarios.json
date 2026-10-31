@@ -1,0 +1,531 @@
+{
+ "note": "v4 §18 scenarios mapped to the v1 catalog (ability ids from spec/rune_mechanics_v1.json). v4 'Buz G1 yavaşlatma' => Buz G2 here (user: Ice G1 = hit only, slow opens at G2). Expectations are checked by test_mechanics.py.",
+ "scenarios": [
+  {
+   "id": "v4-01",
+   "towers": [
+    "fire3{burn:[electric1]}"
+   ],
+   "tr": "Yanma tikine Elektrik G1: yalnızca elektrik hasarı, sekme yok.",
+   "expect": {
+    "compile_lacks": [
+     "ChainTransfer"
+    ],
+    "sim_pos": [
+     "by_element.electric"
+    ],
+    "sim_zero": [
+     "hops"
+    ]
+   }
+  },
+  {
+   "id": "v4-02",
+   "towers": [
+    "fire3{fire_hit:[electric3]}"
+   ],
+   "tr": "Ateş isabetine Elektrik G3: mermi seker, sekilen hedef de yanar.",
+   "expect": {
+    "sim_pos": [
+     "hops~mermi",
+     "statuses.burn"
+    ],
+    "sim_zero": [
+     "hops~durum"
+    ]
+   }
+  },
+  {
+   "id": "v4-03",
+   "towers": [
+    "fire3{burn:[electric3]}"
+   ],
+   "tr": "Yanma tikine Elektrik G3: yanma yandakine atlar, mermi sekmez.",
+   "expect": {
+    "sim_pos": [
+     "hops~durum",
+     "spread_status"
+    ],
+    "sim_zero": [
+     "hops~mermi"
+    ],
+    "sim_max": {
+     "max_gen": 2
+    }
+   }
+  },
+  {
+   "id": "v4-04",
+   "towers": [
+    "fire3{burn:[electric3{chain:[ice2]}]}"
+   ],
+   "tr": "İç içe: atlayan yanma Buz G2 yavaşlatması taşır, donma yok.",
+   "expect": {
+    "sim_pos": [
+     "hops~durum",
+     "statuses.slow"
+    ],
+    "sim_zero": [
+     "frozen"
+    ],
+    "sim_max": {
+     "max_gen": 2
+    }
+   }
+  },
+  {
+   "id": "v4-05",
+   "towers": [
+    "fire5{burn:[electric3,poison2,blood1]}"
+   ],
+   "tr": "Yanma tikine üç kardeş: yayılır, zehir ve kanama uygular; tikten yeni alan doğmaz.",
+   "expect": {
+    "sim_pos": [
+     "statuses.poison",
+     "statuses.bleed",
+     "hops~durum"
+    ],
+    "sim_zero": [
+     "fields_from.hit"
+    ]
+   }
+  },
+  {
+   "id": "v4-06",
+   "towers": [
+    "ice4{ice_shards:[electric3]}",
+    "stone3"
+   ],
+   "tr": "Donmuşken ölümde parçalar Elektrik ile hedef arayıp seker.",
+   "expect": {
+    "compile_slot_has": {
+     "slot": "shards",
+     "family": "ChainTransfer"
+    }
+   }
+  },
+  {
+   "id": "v4-07",
+   "towers": [
+    "water3{water_hit:[blood1]}"
+   ],
+   "tr": "Tek kule: önce kanama, sonra itiş; itiş mesafesi kanama hasarı üretir.",
+   "expect": {
+    "sim_pos": [
+     "bleed_forced",
+     "pushed_tiles"
+    ]
+   }
+  },
+  {
+   "id": "v4-08",
+   "towers": [
+    "blood1{bleed:[water3]}"
+   ],
+   "tr": "Kan ana rün, Su G3 kanama yuvasında: kanama yürünen her karoda tetiklenir; itiş orada döngü yaratacağı için reddedilir, su hasarı ve ıslatma taşınır (v4: 'uyumlu taşıyıcı olmalı').",
+   "expect": {
+    "rejected_family": "ForceMove",
+    "sim_pos": [
+     "by_element.water",
+     "statuses.wet"
+    ],
+    "root_rune": "blood"
+   }
+  },
+  {
+   "id": "v4-09",
+   "towers": [
+    "fire3",
+    "water4{water_hit:[blood1]}"
+   ],
+   "compare_to": [
+    "water4{water_hit:[blood1]}"
+   ],
+   "tr": "Başka kulenin yanması Su itişini ×1,5 yapar; kanama daha çok hasar alır.",
+   "expect": {
+    "greater": [
+     "pushed_tiles",
+     "bleed_forced"
+    ]
+   }
+  },
+  {
+   "id": "v4-10",
+   "towers": [
+    "ice2",
+    "blood1"
+   ],
+   "compare_to": [
+    "blood1"
+   ],
+   "tr": "Buz yavaşlatması Kan'ın yürüme hasarını düşürür (karşıtlık).",
+   "expect": {
+    "less_per_tower": [
+     "bleed_walk"
+    ]
+   }
+  },
+  {
+   "id": "v4-11",
+   "towers": [
+    "volcano3{lava_blob:[electric3,ice2]}"
+   ],
+   "tr": "Lav topları zıplar ve yavaşlatır; donma ve yanma yok.",
+   "expect": {
+    "sim_pos": [
+     "hops~lav topu",
+     "statuses.slow"
+    ],
+    "sim_zero": [
+     "frozen",
+     "statuses.burn"
+    ]
+   }
+  },
+  {
+   "id": "v4-12",
+   "towers": [
+    "volcano3{lava_blob:[electric3{chain:[fire3{burn:[ice2]}]}]}"
+   ],
+   "tr": "Zıplayan lav, zıpladığı hedefi yakar; yanma tikleri yavaşlatır; gizli meteor yok.",
+   "expect": {
+    "sim_pos": [
+     "hops~lav topu",
+     "statuses.burn",
+     "statuses.slow"
+    ],
+    "summons_only": [
+     "volcano"
+    ]
+   }
+  },
+  {
+   "id": "v4-13",
+   "towers": [
+    "meteor2{meteor_area:[poison1]}"
+   ],
+   "tr": "Çarpma alanı zehirler; zehir patlamaz.",
+   "expect": {
+    "sim_pos": [
+     "statuses.poison"
+    ],
+    "compile_lacks_under": {
+     "slot": "area",
+     "family": "AreaImpact"
+    }
+   }
+  },
+  {
+   "id": "v4-14",
+   "towers": [
+    "meteor3{meteor_fragments:[electric3]}"
+   ],
+   "tr": "Meteor parçaları seker.",
+   "expect": {
+    "compile_slot_has": {
+     "slot": "fragment",
+     "family": "ChainTransfer"
+    }
+   }
+  },
+  {
+   "id": "v4-15",
+   "towers": [
+    "golem3{golem_punch:[fire3]}"
+   ],
+   "tr": "Golem yumrukları yakar; golem golem olarak kalır.",
+   "expect": {
+    "sim_pos": [
+     "statuses.burn"
+    ],
+    "summons_only": [
+     "golem"
+    ]
+   }
+  },
+  {
+   "id": "v4-16",
+   "towers": [
+    "golem3{ground_slam:[ice2]}"
+   ],
+   "tr": "Zemin darbesi yavaşlatır, dondurmaz.",
+   "expect": {
+    "sim_pos": [
+     "statuses.slow"
+    ],
+    "sim_zero": [
+     "frozen"
+    ]
+   }
+  },
+  {
+   "id": "v4-17",
+   "towers": [
+    "hive3{beetle_bite:[blood1]}"
+   ],
+   "tr": "Böcek ısırığı kanatır; ek böcek doğurmaz (Üreme dışında).",
+   "expect": {
+    "sim_pos": [
+     "statuses.bleed"
+    ],
+    "sim_max": {
+     "max_beetles": 5
+    }
+   }
+  },
+  {
+   "id": "v4-18",
+   "towers": [
+    "hive3{beetle_bite:[poison2]}"
+   ],
+   "tr": "Böcek ısırıkları zehir yığar; sürü odağıyla tek hedefte.",
+   "expect": {
+    "sim_pos": [
+     "statuses.poison"
+    ]
+   }
+  },
+  {
+   "id": "v4-19",
+   "towers": [
+    "light3{pierce:[poison1]}"
+   ],
+   "tr": "Delinen hedefler zehirlenir.",
+   "expect": {
+    "sim_pos": [
+     "statuses.poison",
+     "hops~ışın"
+    ]
+   }
+  },
+  {
+   "id": "v4-20",
+   "towers": [
+    "stone3{fragments:[electric3]}"
+   ],
+   "tr": "Taş parçaları seker.",
+   "expect": {
+    "compile_slot_has": {
+     "slot": "fragment",
+     "family": "ChainTransfer"
+    },
+    "sim_pos": [
+     "hops~parça"
+    ]
+   }
+  },
+  {
+   "id": "v4-21",
+   "towers": [
+    "fire5{fire_trail:[poison1]}"
+   ],
+   "tr": "Ateş izine basan zehirlenir; DoT'tan yeni alan doğmaz.",
+   "expect": {
+    "sim_pos": [
+     "statuses.poison",
+     "fields.fire_trail"
+    ],
+    "sim_zero": [
+     "fields_from.hit"
+    ]
+   }
+  },
+  {
+   "id": "v4-22",
+   "towers": [
+    "volcano5{lava_blob:[fire3,electric3,ice2]}"
+   ],
+   "tr": "Volkan kimliği korunur: lav yakar, zıplar, yavaşlatır.",
+   "expect": {
+    "sim_pos": [
+     "statuses.burn",
+     "statuses.slow",
+     "hops~lav topu"
+    ],
+    "summons_only": [
+     "volcano"
+    ]
+   }
+  },
+  {
+   "id": "v4-23",
+   "towers": [
+    "water1{water_hit:[blood1]}"
+   ],
+   "tr": "Su G1'de itiş yok; kanama yalnızca yürümeden.",
+   "expect": {
+    "sim_zero": [
+     "pushed_tiles",
+     "bleed_forced"
+    ],
+    "sim_pos": [
+     "bleed_walk"
+    ]
+   }
+  },
+  {
+   "id": "v4-24",
+   "towers": [
+    "light2{dazzle:[electric1]}"
+   ],
+   "tr": "Kamaşmaya Elektrik G1: hasar katkısı, zincir yok.",
+   "expect": {
+    "compile_lacks": [
+     "ChainTransfer"
+    ],
+    "sim_pos": [
+     "by_element.electric"
+    ]
+   }
+  },
+  {
+   "id": "user-trail-ice",
+   "towers": [
+    "fire3{fire_trail:[ice2]}"
+   ],
+   "tr": "Kullanıcı örneği: ateş izine Buz → izdeki düşmanlar yavaşlar.",
+   "expect": {
+    "sim_pos": [
+     "statuses.slow",
+     "fields.fire_trail"
+    ],
+    "sim_zero": [
+     "frozen"
+    ]
+   }
+  },
+  {
+   "id": "user-lava-hop",
+   "towers": [
+    "volcano3{lava_blob:[electric3]}"
+   ],
+   "tr": "Kullanıcı örneği: Elektrik aşılı volkanın lav topları düşmandan düşmana zıplar.",
+   "expect": {
+    "sim_pos": [
+     "hops~lav topu"
+    ]
+   }
+  },
+  {
+   "id": "mana-graft",
+   "towers": [
+    "fire3{burn:[mana1]}"
+   ],
+   "tr": "Yanma tikine Mana G1: yanma hasarının bir kısmı mana olur.",
+   "expect": {
+    "sim_pos": [
+     "mana_siphon"
+    ]
+   }
+  },
+  {
+   "id": "mana-mark",
+   "towers": [
+    "mana3",
+    "stone3"
+   ],
+   "compare_to": [
+    "stone3"
+   ],
+   "tr": "Mana işareti: başka kulenin işaretli düşman çevresindeki hasarı da mana olur.",
+   "expect": {
+    "greater": [
+     "mana_mark",
+     "mana"
+    ]
+   }
+  },
+  {
+   "id": "mana-crystal",
+   "towers": [
+    "mana5",
+    "fire5",
+    "stone5"
+   ],
+   "tr": "Kristalleşme: işaretli düşman ölünce ek mana taşı.",
+   "expect": {
+    "sim_pos": [
+     "mana_mark",
+     "stones"
+    ]
+   }
+  },
+  {
+   "id": "wet-electric",
+   "towers": [
+    "water2",
+    "electric3"
+   ],
+   "compare_to": [
+    "electric3"
+   ],
+   "tr": "Etkileşim: ıslak hedef elektrikten ×1,5 hasar alır.",
+   "expect": {
+    "greater": [
+     "by_element.electric"
+    ]
+   }
+  },
+  {
+   "id": "rej-locked-shards",
+   "recipe": "ice3{ice_shards:[electric3]}",
+   "tr": "Buz parçaları G4'te açılır: alıcıda kilitli.",
+   "expect": {
+    "error": "locked_on_receiver"
+   }
+  },
+  {
+   "id": "rej-locked-push",
+   "recipe": "water2{push:[blood1]}",
+   "tr": "Su itişi G3'te açılır.",
+   "expect": {
+    "error": "locked_on_receiver"
+   }
+  },
+  {
+   "id": "rej-armor-chain",
+   "graft": [
+    "golem2",
+    "stone_skin",
+    "electric3"
+   ],
+   "tr": "Taş deriye Elektrik: tüm katkı uyumsuz, aşı reddedilir.",
+   "expect": {
+    "graft_ok": false
+   }
+  },
+  {
+   "id": "rej-summon",
+   "recipe": "fire3{burn:[volcano3]}",
+   "tr": "Volkan verici: çağrı taşınmaz, lav hasarı taşınır.",
+   "expect": {
+    "rejected_family": "SummonVolcano",
+    "compile_has": [
+     "Damage"
+    ]
+   }
+  },
+  {
+   "id": "rej-pierce-tick",
+   "recipe": "fire3{burn:[light3]}",
+   "tr": "Delme yanma tikinde anlamsız; ışık hasarı yine taşınır.",
+   "expect": {
+    "rejected_family": "Pierce"
+   }
+  },
+  {
+   "id": "stress-24",
+   "towers": [
+    "fire5{fire_hit:[electric5{chain:[ice5{chill:[poison5,blood5]},stone3]},meteor3],burn:[electric3{chain:[ice2,water3]},poison4{poison_tick:[blood2]}],fire_trail:[ice3{freeze:[light3]},hive1,golem1,volcano2{lava_blob:[fire2,water2{wet:[electric2,poison1]}]},stone2{armor_shred:[light2]},blood1]}"
+   ],
+   "tr": "24 düğümlü stres tarifi: bütçe ve kuşak sınırı korunur.",
+   "expect": {
+    "nodes": 24,
+    "sim_max": {
+     "max_budget_used": 16,
+     "max_gen": 2
+    }
+   }
+  }
+ ]
+}
