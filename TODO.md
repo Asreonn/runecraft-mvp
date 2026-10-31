@@ -89,7 +89,7 @@ Kullanıcı ara notları: "rün gösterimi AI slop olmuş — ortada bir rün, e
 - [x] Yerelleştirme: tüm HUD/Inspector/mesaj metinleri `scripts/locale/{en,tr}.json` "ui" bölümünde (105 anahtar); Settings → Language (yeniden başlatınca); `--lang tr`; TR'de taşma testleri geçiyor
 - [x] UI etkileşim testleri (`tests/ui/run_ui.gd`, gerçek render + sentetik fare): 66 kontrol × 1280×720, 1366×768, 1920×1080, 2560×1080, 1440×1080, TR 1280×720, TR 1440×1080
 - [x] Penpot: Kit v5 (taş yuvalar, düğüm soketleri, kanallar, glif halkası, levha, grade ışıkları, ikonlar), v5 kompozisyonlar (A satırlar / B dal haritası / floating / gömülü / tooltip+kart — kullanıcı geri bildirimiyle "superseded"), v6 radyal taş ağacı kompozisyonu; hızlı export: kit board tek PNG → `ui_design/pull_penpot_sheets.sh`
-- [x] Eşdeğerlik yeniden çalıştırma (c2, 5065a12): N1–N3 üç motorda geçti, yeni regresyon yok
+- [x] Eşdeğerlik yeniden çalıştırma (c2): 5065a12 → N1–N3 üç motorda geçti; d2d3af1 → istifleme/sahiplik probları eşit, R1/R2 düzeldi, yeni R3 (ölüm bütçesi) bulundu → düzeltildi; 20e959d → R3 üç motorda eşit (167,2632), 136/136 Python, 1242/1242 harness, 231/231 izolasyon
 - [x] Ekonomi + istifleme ölçümü (c1, 108 tam koşu): bkz. `docs/ECONOMY_STACKING.md`
 - [x] İstifleme kararı (kullanıcı onayı: "F senin önerinle"): yanma/zehir/kanama kule başına ayrı; yavaşlatma/ıslak/zırh/kamaşma/ışık/işaret düğüm başına tek (en güçlü kazanır) — iki motorda + testler
 - [x] Muhasebe hataları: zehir bulaşması, donmuş ölüm kırıkları, kristal aşıları artık sahibine yazılıyor (öldürene değil) — iki motorda + testler
@@ -111,3 +111,4 @@ Kullanıcı ara notları: "rün gösterimi AI slop olmuş — ortada bir rün, e
 | Eşdeğerlik yeniden çalıştırma (commit 94a1c1a) | c2 | [x] B1/B2/B3 düzeldi (doğrulandı); yeni N1–N3 (gelir tavanı anahtarı) bulundu → iki motorda düzeltildi, Python testleri eklendi |
 | Eşdeğerlik yeniden çalıştırma (commit 5065a12) | c2 | [x] N1–N3 Python/grid/replay'de geçti; 1242/1242 kontrol, yeni regresyon yok |
 | Ekonomi + istifleme ölçümü (`codex-mvp/econ_stacking`) | c1 | [x] 108 koşu, 3 seed; 2 muhasebe hatası + genişlik riski bulundu |
+| Eşdeğerlik d2d3af1 + 20e959d (istifleme, sahiplik, R1–R3) | c2 | [x] R3 bulundu ve düzeltildi; üç motor eşit |

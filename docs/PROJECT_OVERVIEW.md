@@ -11,7 +11,7 @@ Where to read further:
 - [`design/DECISIONS.md`](../design/DECISIONS.md) — **current decisions; they override every other document.**
 - [`TODO.md`](../TODO.md) — every user request and its status, in Turkish.
 - [`docs/PARITY_REPORT.md`](PARITY_REPORT.md) — how the Godot runtime compares with the Python reference
-  (latest re-run: [`PARITY_RERUN_5065a12.md`](PARITY_RERUN_5065a12.md)).
+  (latest re-run: [`PARITY_RERUN_20e959d.md`](PARITY_RERUN_20e959d.md)).
 - [`docs/ECONOMY_STACKING.md`](ECONOMY_STACKING.md) — Mana economy, shop loops and status stacking measurements.
 - [`docs/UI_REVIEW.md`](UI_REVIEW.md) — Craft tab / rune tree / inspector redesign, before-after captures, resolution tests.
 
@@ -100,7 +100,7 @@ Command-line flags (after `--`) are parsed in `scripts/game.gd` `_parse_args`:
 | Rune readability | radial stone tree (Craft tab + floating inspector), loot-style grade lights, rendered rune icons, short tooltips; UI tests 66 × 7 configurations |
 | Status stacking | DoTs one instance per tower, utility statuses strongest-only, death effects credited to their owner (both engines, tested) |
 | Camera angle | **45° default** (decided); 30° and zoom-based are options |
-| Godot ↔ Python parity | compiler identical; combat partially equal, differences classified in `docs/PARITY_REPORT.md`. N1–N3 confirmed fixed by the 5065a12 re-run in Python, grid and replay (`docs/PARITY_RERUN_5065a12.md`); its findings R1 (chain label) and R2 (DoT tick tolerance) are fixed afterwards in Godot. The status-stacking change is not yet re-run in the harness |
+| Godot ↔ Python parity | compiler identical; combat partially equal, differences classified in `docs/PARITY_REPORT.md`. Latest re-run on 20e959d (`docs/PARITY_RERUN_20e959d.md`): N1–N3, R1–R3 pass in Python, grid and replay; status stacking / ownership probes equal; grid 55/110 damage-equal (53/110 all metrics), replay 78/110 (73/110); 136/136 Python, 1242/1242 harness, 231/231 isolation checks |
 | High-ground +1 range | implemented, **kept** (decided) |
 
 ## Known gaps / limitations

@@ -85,5 +85,6 @@ double counting.
 ## Not measured
 
 Campaigns longer than eight waves, net return of buying high-grade grafts, randomised recipe fuzzing, save/load
-manipulation. The eight-wave tables above were measured **before** the per-tower DoT rule; a re-run on the new commit
-is listed in `TODO.md`.
+manipulation. The eight-wave tables above were measured **before** the per-tower DoT rule. A check after it: the built-in probe
+`--econ mana3 --front --seed 3 --waves 8` gives the same 688.7 rune mana / 2466.7 total / castle HP 17 (no
+duplicate DoTs in that layout), with no callback errors. A full 108-run re-measurement was not repeated.
