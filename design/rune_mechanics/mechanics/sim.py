@@ -91,6 +91,7 @@ class World:
         }
         s["first_kill"] = None
         s["clear_time"] = None
+        self._income = {}      # mana income soft cap: source -> [second, amount]
 
     # -- scheduling
     def later(self, delay, fn):
@@ -189,10 +190,10 @@ class World:
         ctx.budget["left"] -= 1
         self.stats["applications"] += 1
         order = {"Damage": 0, "ApplyStatus": 1, "CreateGroundField": 2, "ForceMove": 3, "ModifyIncomingDamage": 4, "ManaSiphon": 5}
-        before = self.stats["damage"]
+        before = self.stats["damage_capped"]
         for o in sorted(payload, key=lambda o: order[o.family]):
             if not e.alive:
-                return
+                break          # a lethal hit still pays its siphon below (matches the Godot runtime)
             f = o.family
             if f == "Damage":
                 self.deal(e, o.params["amount"] * ctx.power, o.params["element"], ctx, cause=o.uid)
@@ -202,11 +203,30 @@ class World:
                 self.make_field(e.x, o, ctx)
             elif f == "ForceMove":
                 self.push(e, o, ctx)
-        siph = sum(o.params["siphon"] for o in payload if o.family == "ManaSiphon")
-        if siph:
-            gained = (self.stats["damage"] - before + ctx.event_damage) * siph
+        siphons = [o for o in payload if o.family == "ManaSiphon"]
+        if siphons:
+            siph = sum(o.params["siphon"] for o in siphons)
+            raw = (self.stats["damage_capped"] - before + ctx.event_damage) * siph   # overkill never becomes mana
+            src = siphons[0]
+            gained = self.mana_income(raw, (ctx.tower, src.uid), src.grade)
             self.stats["mana"] += gained
             self.stats["mana_siphon"] += gained
+
+    def mana_income(self, amount, src, grade):
+        """Soft cap per producing Mana node: above income_cap mana/s only over_cap_eff of the excess counts."""
+        if amount <= 0:
+            return 0.0
+        cap = SPEC["runes"]["mana"]["grades"][str(max(1, min(5, grade)))].get("income_cap", 1e9)
+        eff = SPEC["economy"].get("mana_income", {}).get("over_cap_eff", 0.25)
+        sec = int(self.t)
+        b = self._income.get(src)
+        if b is None or b[0] != sec:
+            b = [sec, 0.0]
+        room = max(0.0, cap - b[1])
+        gained = min(amount, room) + max(0.0, amount - room) * eff
+        b[1] += amount
+        self._income[src] = b
+        return gained
 
     # -- damage
     def deal(self, e: Enemy, amount, element, ctx: Ctx, cause=""):
@@ -222,10 +242,11 @@ class World:
         real = min(amount, e.hp)
         s["damage"] += amount
         s["damage_capped"] += real
-        marks = [v["op"].params for m in self.alive() for k, v in m.st.items()
+        marks = [v for m in self.alive() for k, v in m.st.items()
                  if k[0] == "mana_mark" and abs(m.x - e.x) <= v["op"].params["r"]]
         if marks:
-            g = amount * max(p["mark_pct"] for p in marks)
+            best = max(marks, key=lambda v: v["op"].params["mark_pct"])
+            g = self.mana_income(real * best["op"].params["mark_pct"], ("mark", best["op"].uid), best["op"].grade)
             s["mana"] += g
             s["mana_mark"] += g
         s["by_element"][element] = s["by_element"].get(element, 0) + amount
@@ -241,13 +262,14 @@ class World:
         self.stats["kills"] += 1
         self.stats["stones"] += 1
         self.stats["mana"] += SPEC["economy"]["mana_per_kill"]
-        for v in e.get("mana_mark"):
-            if v["op"].params.get("crystal"):
-                self.stats["stones"] += int(v["op"].params["crystal"])
-                subs = v["op"].slots.get("crystal", [])
-                tgt = self.nearest(e.x, exclude={e.id}, within=1.0)
-                if subs and tgt is not None:
-                    self.run_event(subs, tgt, tgt.x, Ctx(gen=1, budget={"left": BUD["applications_per_root_event"]}, tower=ctx.tower), carrier="death")
+        crystal_marks = [v for v in e.get("mana_mark") if v["op"].params.get("crystal")]
+        if crystal_marks:      # several marks on one enemy still crystallise once (the best one)
+            v = max(crystal_marks, key=lambda v: v["op"].params["crystal"])
+            self.stats["stones"] += int(v["op"].params["crystal"])
+            subs = v["op"].slots.get("crystal", [])
+            tgt = self.nearest(e.x, exclude={e.id}, within=1.0)
+            if subs and tgt is not None:
+                self.run_event(subs, tgt, tgt.x, Ctx(gen=1, budget={"left": BUD["applications_per_root_event"]}, tower=ctx.tower), carrier="death")
         if self.stats["first_kill"] is None:
             self.stats["first_kill"] = round(self.t, 2)
         root = Ctx(gen=0, budget={"left": BUD["applications_per_root_event"]}, tag="death", tower=ctx.tower)

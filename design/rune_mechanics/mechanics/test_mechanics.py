@@ -153,9 +153,38 @@ def run_invariants():
     check(f"graft damage = hit×0.7×0.35 ({exp:.2f})", abs(el.params["amount"] - exp) < 1e-9, str(el.params["amount"]))
 
 
+
+def run_economy():
+    """Mana rune economy rules (2026-10-31): lethal hits still siphon, overkill never becomes mana,
+    income is soft-capped per producing Mana node, several marks crystallise once."""
+    siph = resolver.grade_stats(SPEC["runes"]["mana"], 1)["siphon"]
+    s = sim.simulate("mana1", hp=1, count=1)
+    check("lethal hit still pays its siphon", s["mana_siphon"] > 0, str(s))
+    check("siphon never pays for overkill (<= hp x siphon)", s["mana_siphon"] <= 1.0 * siph + 1e-6, str(s["mana_siphon"]))
+    w = sim.World(["mana1"], count=1)
+    cap = SPEC["runes"]["mana"]["grades"]["1"]["income_cap"]
+    eff = SPEC["economy"]["mana_income"]["over_cap_eff"]
+    g1 = w.mana_income(100.0, ("t", "x"), 1)
+    g2 = w.mana_income(100.0, ("t", "x"), 1)
+    check("income soft cap: first second", abs(g1 - (cap + (100 - cap) * eff)) < 1e-9, str(g1))
+    check("income soft cap: same second fully over cap", abs(g2 - 100 * eff) < 1e-9, str(g2))
+    caps = [SPEC["runes"]["mana"]["grades"][str(g)]["income_cap"] for g in range(1, 6)]
+    check("income cap grows with grade", all(a < b for a, b in zip(caps, caps[1:])), str(caps))
+    c = resolver.compile_recipe("mana5")
+    mark = [o for o in resolver._walk(c.ops) if o.family == "ApplyStatus" and o.params.get("status") == "mana_mark" and o.params.get("crystal")][0]
+    w = sim.World(["mana1"], count=2)
+    e = w.enemies[0]
+    e.st[("mana_mark", "a")] = {"op": mark, "left": 5}
+    e.st[("mana_mark", "b")] = {"op": mark, "left": 5}
+    before = w.stats["stones"]
+    w.kill(e, sim.Ctx(gen=0, budget={"left": 16}))
+    check("two crystal marks on one enemy crystallise once", w.stats["stones"] - before == 1 + int(mark.params["crystal"]), str(w.stats["stones"] - before))
+
+
 if __name__ == "__main__":
     run_scenarios()
     run_invariants()
+    run_economy()
     fails = [r for r in results if not r[1]]
     for name, ok, detail in results:
         if not ok or "-v" in sys.argv:

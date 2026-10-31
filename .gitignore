@@ -20,3 +20,5 @@ Desktop.ini
 # Keep .gdignore files: assets and fonts are loaded directly at runtime.
 # No *.import exclusion: Godot 4 caches live in .godot/; importer
 # configuration sidecars should remain versioned if introduced later.
+tests/artifacts/
+tests/fixtures/*.json

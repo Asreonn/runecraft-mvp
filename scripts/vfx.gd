@@ -321,8 +321,10 @@ func mini_meteor(at: Vector3) -> void:
 	ring(at, col("impact"), 0.9, 0.35)
 
 
-func summon(rel: String, pos: Vector3, sc: float) -> Node3D:
+func summon(rel: String, pos: Vector3, sc: float, owner := -1) -> Node3D:
 	var n := GLB.instance(rel)
+	n.add_to_group("summons")
+	n.set_meta("summon_owner", owner)
 	n.position = pos
 	n.scale = Vector3.ONE * 0.01
 	add_child(n)
@@ -335,6 +337,7 @@ func summon(rel: String, pos: Vector3, sc: float) -> Node3D:
 func unsummon(n: Node3D) -> void:
 	if not is_instance_valid(n):
 		return
+	n.remove_from_group("summons")       # gone for gameplay at once; the shrink tween is only visual
 	var tw := create_tween()
 	tw.tween_property(n, "scale", Vector3.ONE * 0.01, 0.25)
 	tw.tween_callback(n.queue_free)
@@ -398,7 +401,7 @@ func field_start(f: Dictionary) -> void:
 	root.scale = Vector3(0.3, 1, 0.3)
 	add_child(root)
 	create_tween().tween_property(root, "scale", Vector3.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	field_nodes[f] = {"node": root, "mat": m}
+	field_nodes[int(f.fid)] = {"node": root, "mat": m, "f": f}
 	if f.kind == "fire_trail" or f.kind == "lava_pool":
 		particles(root.position + Vector3(0, 0.1, 0), col(_el_of(f.kind), "hot"), c, 6, 0.8, 0.07, 0.6, 1.5, 25.0)
 
@@ -408,9 +411,10 @@ func _el_of(kind: String) -> String:
 
 
 func field_end(f: Dictionary) -> void:
-	if field_nodes.has(f):
-		var n: Node3D = field_nodes[f].node
-		field_nodes.erase(f)
+	var id := int(f.get("fid", -1))
+	if field_nodes.has(id):
+		var n: Node3D = field_nodes[id].node
+		field_nodes.erase(id)
 		if is_instance_valid(n):
 			n.queue_free()
 
@@ -465,8 +469,9 @@ func _process(dt: float) -> void:
 		if f.age >= f.life:
 			l.queue_free()
 			floaters.erase(f)
-	for f in field_nodes:
-		var fn: Dictionary = field_nodes[f]
+	for id in field_nodes:
+		var fn: Dictionary = field_nodes[id]
+		var f: Dictionary = fn.f
 		var a := clampf(float(f.left) / maxf(float(f.dur), 0.01), 0.0, 1.0)
 		(fn.mat as StandardMaterial3D).albedo_color.a = 0.55 * minf(1.0, a * 3.0)
 
@@ -512,6 +517,8 @@ func _update_fx(dt: float) -> void:
 		if not is_instance_valid(n):
 			fx.erase(f)
 			continue
+		if n is CPUParticles3D:
+			(n as CPUParticles3D).speed_scale = maxf(game.time_mult(), 0.0001)   # particles follow game speed / pause
 		var t: float = f.age / f.life
 		match f.kind:
 			"sprite":

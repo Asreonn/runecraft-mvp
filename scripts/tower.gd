@@ -23,6 +23,7 @@ var rune_node: Node3D
 var orbit: Node3D
 var bob := 0.0
 var model: Node3D
+var rune_gen := 0               # bumped on every rune change; in-flight lava/meteors of an old rune do nothing
 
 
 func setup(g, id: int, c: Vector2i) -> void:
@@ -56,11 +57,11 @@ func range_tiles() -> float:
 
 
 func set_rune(node) -> void:
+	cleanup()                        # the old rune's volcano / golem / hive / beetles leave with it
+	rune_gen += 1
 	rune = node
 	for ch in orbit.get_children():
 		ch.queue_free()
-	entity = null
-	beetles.clear()
 	if rune == null:
 		compiled = {}
 		kind = ""
@@ -76,18 +77,32 @@ func set_rune(node) -> void:
 	rune_node = GLB.instance("runes/%s_g%d.glb" % [game.color_id(rune.rune), int(rune.grade)])
 	rune_node.scale = Vector3.ONE * RUNE_SCALE
 	orbit.add_child(rune_node)
-	# grafted donors: small rune models orbiting the main rune (one per direct graft, coloured by donor)
+	# grafted donors: at most 4 direct donors orbit the main rune (canonical order, so a recipe always looks the
+	# same); every further graft node is summarised by one small "+N" tag instead of more models (no clutter).
 	var donors := []
-	for ab in rune.grafts:
-		for d in rune.grafts[ab]:
-			donors.append(d)
-	for i in mini(donors.size(), 6):
+	for a in rdef.abilities:
+		donors.append_array(game.rl.sorted_kids(rune.grafts.get(a.id, [])))
+	var shown := mini(donors.size(), 4)
+	for i in shown:
 		var d = donors[i]
 		var mc := GLB.instance("runes/%s_g%d.glb" % [game.color_id(d.rune), int(d.grade)])
 		mc.scale = Vector3.ONE * 0.16
 		mc.set_meta("orbit_i", i)
-		mc.set_meta("orbit_n", mini(donors.size(), 6))
+		mc.set_meta("orbit_n", shown)
 		orbit.add_child(mc)
+	var extra: int = game.rl.node_size(rune) - 1 - shown
+	if extra > 0:
+		var tag := Label3D.new()
+		tag.text = "+%d" % extra
+		tag.font = game.font_bold
+		tag.font_size = 40
+		tag.pixel_size = 0.008
+		tag.outline_size = 10
+		tag.modulate = Color("#D8FBFF")
+		tag.outline_modulate = Color(0.06, 0.06, 0.08, 0.9)
+		tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		tag.position = Vector3(0.55, 0.42, 0)
+		orbit.add_child(tag)
 	timer = 0.3
 
 
@@ -174,7 +189,10 @@ func _meteor(t) -> void:
 	var P: Dictionary = summon.params
 	var lead_raw: Vector3 = game.path_point(t.s + t.base_speed * t.speed_factor(game.now) * float(P.delay) * 0.9)
 	var lead: Vector3 = game.cell_world(game.wb.world_to_cell(lead_raw))     # meteors land on cell centres
+	var g := rune_gen
 	game.vfx.meteor(lead, float(P.delay), func():
+		if not is_instance_valid(self) or g != rune_gen:
+			return
 		var at := Vector2(lead.x, lead.z) * 0.5
 		var n = game.combat.nearest(at, {}, 0.45)
 		game.combat.run_event(hit_ops, n, at, root_ctx())
@@ -196,7 +214,7 @@ func _volcano(dt: float) -> void:
 			var tg := in_range()
 			if not tg.is_empty():
 				var pos := _side_point(tg[0])
-				entity = {"pos": pos, "left": float(P.life), "next": 0.6, "node": game.vfx.summon("summons/volcano.glb", pos, 0.9)}
+				entity = {"pos": pos, "left": float(P.life), "next": 0.6, "node": game.vfx.summon("summons/volcano.glb", pos, 0.9, tid)}
 		return
 	entity.left -= dt
 	entity.next -= dt
@@ -214,11 +232,12 @@ func _volcano(dt: float) -> void:
 		near.sort_custom(func(a, b): return (a.tile_pos() - vp).length() < (b.tile_pos() - vp).length())
 		var extra: Array = summon.slots.get("extra_blobs", [])
 		game.vfx.eruption(entity.pos)
+		var g := rune_gen
 		for i in int(P.blobs):
 			var tgt = near[i % near.size()]
 			var ops: Array = hit_ops + (extra if i > 0 else [])
 			game.vfx.lava_blob(entity.pos + Vector3(0, 1.0, 0), tgt, float(P.flight), func():
-				if is_instance_valid(tgt) and tgt.alive and not tgt.leaked:
+				if g == rune_gen and is_instance_valid(tgt) and tgt.alive and not tgt.leaked:
 					game.combat.run_event(ops, tgt, tgt.tile_pos(), root_ctx())
 			)
 
@@ -229,7 +248,7 @@ func _golem(dt: float) -> void:
 		if timer <= 0.0 and not in_range().is_empty():
 			var pos: Vector3 = game.cell_world(game.summon_cell(global_position + Vector3(0, 0, 2.0)))
 			entity = {"pos": pos, "left": float(P.life), "cd": 0.0, "n": 0, "target": null,
-				"node": game.vfx.summon("summons/golem.glb", pos, 1.0)}
+				"node": game.vfx.summon("summons/golem.glb", pos, 1.0, tid)}
 		return
 	entity.left -= dt
 	entity.cd -= dt
@@ -276,7 +295,7 @@ func _hive(dt: float) -> void:
 			if not tg.is_empty():
 				var pos := _side_point(tg[0])
 				entity = {"pos": pos, "left": float(P.life), "spawn": 0.0, "extra": 0, "mark": null,
-					"node": game.vfx.summon("summons/hive.glb", pos, 0.9)}
+					"node": game.vfx.summon("summons/hive.glb", pos, 0.9, tid)}
 				for b in beetles:
 					game.vfx.unsummon(b.node)
 				beetles.clear()
@@ -333,7 +352,7 @@ func _hive(dt: float) -> void:
 
 func _spawn_beetle() -> void:
 	var pos: Vector3 = entity.pos + Vector3(0, 0.9, 0)
-	beetles.append({"pos": pos, "cd": 0.0, "t": null, "ph": randf() * 6.0, "node": game.vfx.summon("summons/bug.glb", pos, 0.8)})
+	beetles.append({"pos": pos, "cd": 0.0, "t": null, "ph": randf() * 6.0, "node": game.vfx.summon("summons/bug.glb", pos, 0.8, tid)})
 	var subs: Array = summon.slots.get("birth", [])
 	if not subs.is_empty():
 		var hp := Vector2(entity.pos.x, entity.pos.z) * 0.5
@@ -342,8 +361,12 @@ func _spawn_beetle() -> void:
 				game.combat.run_event(subs, e, e.tile_pos(), root_ctx())
 
 
+## Remove every summon this tower owns (rune change, sell, unsocket). Safe to call repeatedly.
 func cleanup() -> void:
 	if entity != null and entity.has("node"):
 		game.vfx.unsummon(entity.node)
 	for b in beetles:
 		game.vfx.unsummon(b.node)
+	entity = null
+	beetles.clear()
+	target = null

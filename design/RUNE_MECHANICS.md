@@ -1,7 +1,9 @@
 # RuneCraft — Rün mekaniği ve sınırsız otomatik craft (v1)
 
-**Durum:** tasarım önerisi + çalışan referans uygulama · 2026-10-31
-**Tek doğruluk kaynağı:** `spec/rune_mechanics_v1.json`
+**Durum:** tasarım + çalışan referans uygulama + Godot oyunu · son güncelleme 2026-10-31 (revizyon)
+**Güncel kararlar:** [`DECISIONS.md`](DECISIONS.md) bu belgenin önüne geçer (kamera, Mana rünü, çarpansal Shop
+fiyatları, grafting paradigması, okunabilirlik, gelecek kapsamı).
+**Tek doğruluk kaynağı (sayılar):** `spec/rune_mechanics_v1.json` (oyunda `data/rune_mechanics_v1.json`)
 **Kaynaklar:**
 - Kullanıcının GDD v4 belgesi: `design/source_package/RuneCraft_Rune_Ability_Function_Plan_MVP_v4.md`.
 - Kullanıcının 30–31 Ekim kararları. Bu kararlar v4'ün önüne geçer.
@@ -9,7 +11,9 @@
 **Sayıların kaynağı:**
 - Numaralar prototip içindir.
 - Denge `mechanics/balance.py` ile ölçülüp ayarlandı.
-- Davranış `mechanics/test_mechanics.py` ile doğrulandı (114/114).
+- Davranış `mechanics/test_mechanics.py` ile doğrulandı (127/127; ekonomi testleri dahil).
+- Godot oyunu ile referans arasındaki farklar: Codex eşdeğerlik raporu (`docs/PARITY_REPORT.md`). Yalnızca referansta
+  doğrulanan bir davranış, oyunda da doğrulanmış sayılmaz.
 
 ---
 
@@ -70,11 +74,15 @@ Kurallar:
 | **Volkan** | Lav topu (çağrı) | Lav sıçraması | Geniş püskürme | Lav birikintisi | stat |
 | **Golem** | Golem yumruğu | Taş deri | Zemin darbesi | stat | stat |
 | **Kovan** | Böcek ısırığı | Üreme | Sürü odağı | stat | stat |
+| **Mana** | Mana sifonu | stat | Mana işareti | stat | Kristalleşme |
 
 Kullanıcının koyduklarına uyulan noktalar:
 - Ateş vuruş → yanma → yanan düşmanın arkasında yerde ateş hasarı veren iz bırakır.
 - Buz vuruş → yavaşlatma → donma → donukken ölünce parçalanma → çevreyi dondurma.
 - Volkan çağrılan bir dağdır; kraterinden çevresine lav topları fışkırtır.
+- Mana ekonomi rünüdür ve oyunda kalır (kullanıcı kararı): G1 hasarın bir kısmını manaya çevirir, G3 işaretlediği
+  düşmanın çevresindeki tüm kulelerin hasarını manaya çevirir, G5 işaretli düşman ölünce mana taşı düşürür.
+  Kurallar ve ölçümler §8'de.
 
 Kalanlar v4'ten alındı ya da benim önerim; JSON'da `source` alanında işaretli. Her grade'in tam metni
 `reports/rune_cards.md` dosyasında.
@@ -182,22 +190,39 @@ Bu örneklerin simülasyon sayıları ve rün açıklamaları `reports/mechanics
 ## 8. Ekonomi
 
 **Para birimleri:**
-- **Mana:** zamanla dolar, öldürmelerden gelir. Rün satın alma, birleştirme ve aşı ücretini öder.
-- **Mana taşı:** dalga ödülüdür. Kule inşasını öder.
+- **Mana:** zamanla dolar (+3/sn), öldürmelerden gelir (+2), Mana rünü üretir. Rün satın alma, birleştirme ve aşı
+  ücretini öder.
+- **Mana taşı:** düşmanlar öldükçe düşer (normal 1, iri 3, boss 10). Kule inşasını öder.
 
-**Rün ve birleştirme:**
-- **Rün G1:** 40 mana; çağırma rünleri 60 mana.
-- **Birleştirme:** aynı tür ve aynı grade iki rün → bir üst grade, ücret 10 × (hedef grade − 1).
-- **Bir rünün değeri:** 40 / 90 / 200 / 430 / 900 mana. Çağırma rünlerinde 60 / 130 / 280 / 590 / 1220.
-- **Önerim:** iki girdinin aşıları çıktıda birleşir.
+**Shop — çarpansal fiyat (kullanıcı kararı; oranlar geçici, denge kanıtı yok):**
+- **Rün:** fiyat = taban (40, çağırma rünleri 60) × 1,15^k, en çok ×3.
+  - k, o rünün yakın zamanda kaç kez alındığıdır.
+  - Temizlenen her dalgada k yarıya iner, fiyatlar soğur.
+- **Kule:** fiyat = 4 × 1,25^n; n, sahip olunan kule sayısıdır.
+  - Satışta ödenen fiyat ile yeniden kurma fiyatından küçüğünün yarısı geri döner.
+  - Al-sat döngüsü bu yüzden her zaman taş kaybettirir.
+  - **Tarihçe:** eski formül `4 + 2(n−1)` ve "n. kule 1 + n" önerisi geçersizdir.
+- **Gösterim:** Shop güncel fiyatı gösterir. Fiyat kaydedilir ve yüklenir.
+
+**Birleştirme:** aynı tür ve aynı grade iki rün → bir üst grade, ücret 10 × (hedef grade − 1). İki girdinin aşıları
+çıktıda birleşir.
 
 **Aşı:**
 - **Ücret:** `20 × 1,3^(N−2)` mana; N, aşıdan sonraki düğüm sayısıdır. 10. düğüm 163 mana, 24. düğüm ≈ 6.400 mana.
   Aşı sınırsızdır ama gittikçe pahalanır.
 - **Sökme:** içerik geri gelir, ücret yanar.
-- Örnek: `ateş3{yanma:[elektrik3{sekme:[buz1]}]}` = 200 + 200 + 40 + 20 + 26 = **486 mana**.
 
-**Kule:** n. kule 1 + n mana taşı. Bu benim önerim; dengesi henüz yapılmadı.
+**Mana rünü ekonomisi (geçici değerler):**
+- Overkill hasar hiçbir zaman manaya dönmez. Öldürücü vuruşun sifonu yine de ödenir.
+- Gelir sınırı:
+  - Sifon ve işaret geliri, onu üreten Mana düğümü başına saniyede 2,5 / 4 / 6 / 8 / 11 manaya kadar tam sayılır
+    (G1–G5).
+  - Fazlasının yalnızca %25'i sayılır.
+  - Bu sınır, büyük alan hasarıyla sınırsız mana döngüsünü engeller.
+- Aynı düşmandaki birden çok kristal işareti yalnızca bir kez kristalleşir.
+- HUD gerçek gelir hızını, kule kartı da kule başına mana/sn'yi gösterir.
+- Oyun içi ölçüm (8 dalga, `reports/mana_economy.md`): yolun başındaki Mana kulesi toplam manayı G1'de ~%11, G3'te ~%35,
+  G5'te ~%62 artırır. Arkada duran Mana kulesi çok daha az kazanır. Sınırsız döngü yoktur.
 
 ## 9. Kod ve dosyalar (hepsi `asset-work/claude-tileset/runes/` altında)
 
@@ -216,9 +241,9 @@ Bu örneklerin simülasyon sayıları ve rün açıklamaları `reports/mechanics
 - Aile başına bir işleyici; durumlar düşman üzerinde, kaynak kimliğiyle tutulur.
 - Spec JSON'u Godot tarafına aynen taşınır.
 
-## 10. Açık noktalar
+## 10. Açık noktalar ve gelecek kapsamı
 
-- **Benim önerilerim:** v4'te olmayan ve kullanıcının saymadığı yetenekler:
+- **Henüz onaylanmamış önerilerim:** v4'te olmayan ve kullanıcının saymadığı yetenekler:
   - Elektrik aşırı yük şoku;
   - Zehir bulaşma;
   - Su dalga;
@@ -228,10 +253,18 @@ Bu örneklerin simülasyon sayıları ve rün açıklamaları `reports/mechanics
   - Meteor yağmuru;
   - Volkan lav birikintisi;
   - Kovan üreme.
-
-  Onay ya da değişiklik bekliyor.
-- **İyileşen düşman yok:** Zehirin iyileşme baskısı (v4) şu an referans dalgada ölçülemiyor.
-- **Golem'in taş derisi:** Düşmanlar saldırmadığı için ölçülemiyor. Bu kuralların hepsi düşman tasarımına bağlı.
-- **Birleştirmede aşıların birleşmesi** ve **kule taşı formülü:** benim önerim.
-- **Simülasyon kapsamı:** 1B yol yaklaşıktır. Gerçek harita topolojisi, boss dirençleri ve düşman çeşitliliği
-  yoktur. Gerçek denge oyun içinde yeniden ölçülmeli.
+- **Gelecek kapsamı (kaldırılmayacak, şimdi geliştirilmiyor):**
+  - **Işık:** bazı yetenekler ileride Fog of War ve keşif sistemiyle anlam kazanacak.
+  - **Golem taş derisi:** düşmanlar çağrılan birimlere saldırdığında anlam kazanacak.
+  - **Zehir iyileşme baskısı:** iyileşen düşmanlar geldiğinde anlam kazanacak.
+- **Roguelike hedefi (gelecek):**
+  - kule şasileri ve çeşitliliği, global artifact'ler, yerel kule modifier'ları, dalga sonrası ödüller;
+  - harita keşfi ve Fog of War, sandık / tüccar / buluntular;
+  - biyomlar, üç kale ilerlemesi, tanrısal güçler;
+  - run ilerlemesi, Demon God hikâyesi ve yeniden doğuş döngüsü.
+- **Aynı tarifli iki kule:** aynı durumu aynı düşmana uygularsa tek örnek tazelenir ve tikler ilk kuleye yazılır
+  (Godot ve referans aynı). İstif edilmeli mi? Karar bekliyor.
+- **Simülasyon kapsamı:**
+  - Referans 1B yol ve sürekli yarıçap kullanır; oyun grid hücreleriyle hedefler ve alanlar tek hücredir.
+  - Farklar eşdeğerlik raporunda sınıflandırıldı.
+  - Gerçek denge oyun içinde ölçülmeli.

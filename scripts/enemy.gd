@@ -104,6 +104,11 @@ func cell() -> Vector2i:
 	return Vector2i(roundi(global_position.x / 2.0), roundi(-global_position.z / 2.0))
 
 
+## Snap the node onto its path distance right away (forced moves happen mid-event, before the next visual refresh).
+func sync_position() -> void:
+	position = world_pos()
+
+
 func tile_pos() -> Vector2:
 	var p := global_position
 	return Vector2(p.x, p.z) * 0.5

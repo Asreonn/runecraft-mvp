@@ -13,6 +13,8 @@ var BUD: Dictionary
 var INTER: Dictionary = {}
 var fields: Array = []        # Dictionaries
 var damage_total := 0.0
+var _fid := 0
+var damage_real := 0.0         # damage that removed HP (overkill excluded) — mana and DPS use this
 
 
 func _init(g, spec_dict: Dictionary) -> void:
@@ -74,7 +76,7 @@ func apply_payload(payload: Array, e, ctx: Dictionary) -> void:
 	ctx.budget.left = int(ctx.budget.left) - 1
 	var sorted := payload.duplicate()
 	sorted.sort_custom(func(a, b): return ORDER[a.family] < ORDER[b.family])
-	var before := damage_total
+	var before := damage_real
 	for o in sorted:
 		if not e.alive:
 			break
@@ -88,13 +90,16 @@ func apply_payload(payload: Array, e, ctx: Dictionary) -> void:
 			"ForceMove":
 				push(e, o, ctx)
 	var siph := 0.0
+	var src = null
 	for o in payload:
 		if o.family == "ManaSiphon":
 			siph += float(o.params.siphon)
+			if src == null:
+				src = o
 	if siph > 0.0:
-		var gained := (damage_total - before + float(ctx.event_damage)) * siph
-		if gained > 0.0:
-			game.add_mana(gained, e.global_position, "siphon")
+		# overkill never becomes mana; income is soft-capped per producing Mana node (economy.gd)
+		var raw := (damage_real - before + float(ctx.event_damage)) * siph
+		game.economy.rune_income(raw, "%d|%s" % [int(ctx.tower), src.uid], int(src.grade), int(ctx.tower), e.global_position, "siphon")
 
 
 # ------------------------------------------------------------------ damage / death
@@ -111,17 +116,19 @@ func deal(e, amount: float, element: String, ctx: Dictionary) -> void:
 	if element == "electric" and e.has("wet"):
 		amount *= float(INTER.wet_conducts.effect.damage_mult)
 	damage_total += amount
-	# mana marks near the victim turn this damage into mana (any tower)
-	var mark := 0.0
+	var real := minf(amount, maxf(e.hp, 0.0))       # damage that actually removed HP (no overkill)
+	damage_real += real
+	# mana marks near the victim turn this damage into mana (any tower); the strongest mark counts
+	var best = null
 	for m in alive():
 		for v in m.get_all("mana_mark"):
-			if dist_t(m, e) <= float(v.op.params.r):
-				mark = maxf(mark, float(v.op.params.mark_pct))
-	if mark > 0.0:
-		game.add_mana(amount * mark, e.global_position, "mark")
+			if dist_t(m, e) <= float(v.op.params.r) and (best == null or float(v.op.params.mark_pct) > float(best.op.params.mark_pct)):
+				best = v
+	if best != null:
+		game.economy.rune_income(real * float(best.op.params.mark_pct), "mark|" + str(best.op.uid), int(best.op.grade), int(best.tower), e.global_position, "mark")
 	e.hp -= amount
 	e.flash = 0.12
-	game.record_damage(int(ctx.tower), amount)
+	game.record_damage(int(ctx.tower), real)
 	game.vfx.damage_number(e, amount, element)
 	if e.hp <= 0.0:
 		kill(e, ctx)
@@ -156,14 +163,17 @@ func kill(e, ctx: Dictionary) -> void:
 				game.vfx.link(e.global_position, tgt.global_position, "poison", "bulaşma")
 				apply_status(tgt, v.op, child_ctx(root, 1, 1.0), stacks)
 				run_event(v.op.slots.get("infect", []), tgt, tgt.tile_pos(), child_ctx(root, 1, 1.0))
-	# mana crystal
+	# mana crystal: several marks on one enemy still crystallise once (the best one)
+	var cv = null
 	for v in e.get_all("mana_mark"):
-		if float(v.op.params.get("crystal", 0)) > 0:
-			game.add_stones(int(v.op.params.crystal), e.global_position)
-			var subs2: Array = v.op.slots.get("crystal", [])
-			var tgt2 = nearest(e.tile_pos(), {e.eid: true}, 1.0)
-			if not subs2.is_empty() and tgt2 != null:
-				run_event(subs2, tgt2, tgt2.tile_pos(), child_ctx(root, 1, 1.0))
+		if float(v.op.params.get("crystal", 0)) > 0 and (cv == null or float(v.op.params.crystal) > float(cv.op.params.crystal)):
+			cv = v
+	if cv != null:
+		game.add_stones(int(cv.op.params.crystal), e.global_position)
+		var subs2: Array = cv.op.slots.get("crystal", [])
+		var tgt2 = nearest(e.tile_pos(), {e.eid: true}, 1.0)
+		if not subs2.is_empty() and tgt2 != null:
+			run_event(subs2, tgt2, tgt2.tile_pos(), child_ctx(root, 1, 1.0))
 
 
 # ------------------------------------------------------------------ statuses
@@ -189,7 +199,7 @@ func apply_status(e, o: Dictionary, ctx: Dictionary, stacks := 1) -> void:
 				cur.gen = mini(cur.gen, int(ctx.gen))
 			else:
 				e.st[key] = {"op": o, "dps": float(p.dps), "left": dur, "next": 1.0, "gen": int(ctx.gen),
-					"last_drop": e.tile_pos(), "tower": ctx.tower, "spread": false}
+					"last_drop": _cellv(e.tile_pos()), "tower": ctx.tower, "spread": false}
 		"slow", "wet", "shred", "blind", "lit":
 			e.st[key] = {"op": o, "pct": float(p.get("pct", 0.0)), "left": float(p.dur)}
 			var subs: Array = o.slots.get("apply", []) + o.slots.get("lit", [])
@@ -198,7 +208,7 @@ func apply_status(e, o: Dictionary, ctx: Dictionary, stacks := 1) -> void:
 		"mana_mark":
 			if not cur:
 				game.vfx.mark(e, float(p.r), float(p.dur))
-			e.st[key] = {"op": o, "left": float(p.dur)}
+			e.st[key] = {"op": o, "left": float(p.dur), "tower": int(ctx.tower)}
 			var ms: Array = o.slots.get("mark", [])
 			if not ms.is_empty():
 				run_event(ms, e, e.tile_pos(), child_ctx(ctx, ctx.gen, 1.0))
@@ -328,6 +338,7 @@ func tick_statuses(e, dt: float) -> void:
 func move(e, dist: float, forced: bool) -> void:
 	e.s += -dist if forced else dist
 	e.s = maxf(e.s, 0.0)
+	e.sync_position()          # follow-on propagation (chains, fields) must see the post-move position
 	for key in e.st.keys():
 		if not e.alive or not e.st.has(key):
 			continue
@@ -396,8 +407,10 @@ func add_field(f: Dictionary) -> void:
 	var mine := fields.filter(func(x): return x.tower == f.tower)
 	if mine.size() >= int(BUD.fields_per_tower):
 		var old = mine[0]
-		fields.erase(old)
+		fields.remove_at(fields.find(old))
 		game.vfx.field_end(old)
+	_fid += 1
+	f.fid = _fid                       # stable identity: field dictionaries change every tick
 	fields.append(f)
 	game.vfx.field_start(f)
 
@@ -407,7 +420,7 @@ func update_fields(dt: float) -> void:
 	for f in fields.duplicate():
 		f.left -= dt
 		if f.left <= 0.0:
-			fields.erase(f)
+			fields.remove_at(fields.find(f))
 			game.vfx.field_end(f)
 			continue
 		if game.now + 0.0001 >= f.next_tick:

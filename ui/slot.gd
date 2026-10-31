@@ -135,6 +135,9 @@ func _gui_input(ev: InputEvent) -> void:
 		if on_click.is_valid():
 			on_click.call(ev.double_click)
 			accept_event()
+	elif ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_RIGHT and node != null:
+		game.hud.inspect(node)              # right-click any rune: full graft tree
+		accept_event()
 
 
 func _get_drag_data(_p: Vector2) -> Variant:

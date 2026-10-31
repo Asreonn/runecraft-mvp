@@ -1,3 +1,7 @@
+> **Durum notu (2026-10-31):** Bu belge tarihsel kaynaktır ve korunur. Güncel kararlar `design/DECISIONS.md` ve
+> `design/RUNE_MECHANICS.md` içindedir; çelişkide onlar geçerlidir (ör. rün grade açılımları, Mana rünü, Shop fiyatları,
+> kamera açısı).
+
 # RuneCraft — Rün, Yetenek ve İşlev Kataloğu
 
 **MVP Oyun Tasarım Dokümanı (GDD) · v4.0 · 30 Ekim 2026**  

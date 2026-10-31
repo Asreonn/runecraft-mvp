@@ -1,3 +1,7 @@
+> **Durum notu (2026-10-31):** Bu belge tarihsel kaynaktır ve korunur. Güncel kararlar `design/DECISIONS.md` ve
+> `design/RUNE_MECHANICS.md` içindedir; çelişkide onlar geçerlidir (ör. rün grade açılımları, Mana rünü, Shop fiyatları,
+> kamera açısı).
+
 # Agent Brief — RuneCraft Rune Visual Language / SYSTEM DESIGN ONLY
 
 You are acting as a senior game art director, technical artist and procedural visual-system designer. Your job is to **UNDERSTAND the RuneCraft gameplay and crafting system**, then propose a robust, original, automatically composable visual design system for runes. **Do not create the actual art, models, textures, shaders, or prototypes yet.**

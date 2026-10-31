@@ -13,6 +13,9 @@ const HudScript := preload("res://ui/hud.gd")
 const GLB := preload("res://scripts/glb.gd")
 const Overlay := preload("res://scripts/grid_overlay.gd")
 const CameraRig := preload("res://scripts/camera_rig.gd")
+const RuneStore := preload("res://scripts/rune_store.gd")
+const Economy := preload("res://scripts/economy.gd")
+const SaveSystem := preload("res://scripts/save_system.gd")
 const LEVEL_H := 0.96                    # one terrain level (24 voxels)
 
 const COLOR_ID := {"fire": "ates", "ice": "buz", "electric": "elektrik", "poison": "zehir", "water": "su",
@@ -27,6 +30,9 @@ signal changed
 var spec: Dictionary
 var colors: Dictionary
 var rl                                  # rune_lib instance
+var store                               # rune_store.gd: inventory / craft / socket operations
+var economy                             # economy.gd: shop prices, mana income
+var saves                               # save_system.gd
 var seed_value := 0
 var map: Dictionary
 var wb
@@ -77,7 +83,9 @@ var drop_tower = null                   # tower under the cursor while a rune is
 var drop_ghost: Node3D
 var drop_ghost_key := ""
 var args := {}
-var settings := {"lang": "en", "numbers": true, "fullscreen": false, "cam_speed": 1.0, "edge_pan": false}
+var settings := {"lang": "en", "numbers": true, "fullscreen": false, "cam_speed": 1.0, "edge_pan": false, "cam_angle": "45"}
+## Camera angle is NOT final: 45° (default), 30° and a zoom-dependent angle are offered for evaluation only.
+const CAM_ANGLES := {"45": [45.0, 45.0], "30": [30.0, 30.0], "dynamic": [32.0, 52.0]}
 const SETTINGS_PATH := "user://runecraft_settings.json"
 const SAVE_PATH := "user://runecraft_save.json"
 var _shot_i := 0
@@ -86,6 +94,8 @@ var _shot_i := 0
 func _ready() -> void:
 	args = _parse_args(OS.get_cmdline_user_args())
 	_load_settings()
+	if args.has("cam"):
+		settings["cam_angle"] = str(args["cam"])
 	spec = JSON.parse_string(FileAccess.get_file_as_string("res://data/rune_mechanics_v1.json"))
 	colors = JSON.parse_string(FileAccess.get_file_as_string("res://data/rune_colors_v4.json")).runes
 	rl = load("res://scripts/rune_lib.gd").new("res://data/rune_mechanics_v1.json")
@@ -98,6 +108,9 @@ func _ready() -> void:
 	castle_max = castle_hp
 	mana_regen = float(e.mana_regen_per_s)
 	inventory.resize(INV_SIZE)
+	store = RuneStore.new(self)
+	economy = Economy.new(self)
+	saves = SaveSystem.new(self)
 	seed_value = int(args.get("seed", randi() % 100000))
 	var loaded = pending_load
 	pending_load = null
@@ -110,9 +123,11 @@ func _ready() -> void:
 	notify("Wave 1 incoming — build a tower and socket a rune.")
 	_apply_settings()
 	if loaded != null:
-		_apply_load(loaded)
+		saves.restore(loaded)
 	if args.has("demo") and loaded == null:
 		_demo()
+	if args.has("econ") and loaded == null:
+		_econ_mode()
 	if args.has("auto"):
 		changed.connect(_auto_log)
 	if args.has("savetest"):
@@ -325,6 +340,7 @@ func time_mult() -> float:
 func _process(real_dt: float) -> void:
 	message_t -= real_dt
 	_update_indicators()
+	_camera_angle()
 	if paused or wave_state == "lost":
 		_update_ghost()
 		return
@@ -349,6 +365,15 @@ func _process(real_dt: float) -> void:
 		t.step(dt)
 	_cleanup_dead()
 	_update_ghost()
+
+
+## Zoom-dependent camera angle (evaluation option): lower angle when zoomed in, steeper when zoomed out.
+func _camera_angle() -> void:
+	var ang: Array = CAM_ANGLES.get(str(settings.get("cam_angle", "45")), CAM_ANGLES["45"])
+	if cam_rig == null or ang[0] == ang[1]:
+		return
+	var t := clampf((cam.size - cam_rig.min_size) / maxf(cam_rig.max_size - cam_rig.min_size, 0.001), 0.0, 1.0)
+	cam_rig.pitch_deg = lerpf(float(ang[0]), float(ang[1]), t)
 
 
 func _cleanup_dead() -> void:
@@ -395,6 +420,7 @@ func _waves(dt: float) -> void:
 			if enemies.is_empty():
 				wave_state = "build"
 				countdown = 15.0
+				economy.on_wave_cleared()
 				notify("Wave %d cleared." % wave)
 				changed.emit()
 
@@ -490,7 +516,7 @@ func notify(t: String) -> void:
 # ------------------------------------------------------------------ building
 
 func tower_cost() -> int:
-	return 4 + 2 * towers.size()
+	return economy.tower_cost()
 
 
 func toggle_build() -> void:
@@ -541,14 +567,7 @@ func try_build(c: Vector2i) -> bool:
 		notify("Not enough mana stones (%d needed)." % cost)
 		return false
 	stones -= cost
-	wb.take_cell(c)
-	var t := Node3D.new()
-	t.set_script(TowerScript)
-	add_child(t)
-	t.position = cell_world(c)
-	t.setup(self, next_tid, c)
-	next_tid += 1
-	towers.append(t)
+	var t = place_tower(c, cost)
 	t.pop_in()
 	vfx.ring(t.position, Color("#EECB8E"), 2.2, 0.5)
 	vfx.particles(t.position + Vector3(0, 0.3, 0), Color(1, 0.95, 0.8), Color(0.7, 0.6, 0.45), 16, 2.0, 0.1, 0.5)
@@ -557,6 +576,20 @@ func try_build(c: Vector2i) -> bool:
 		build_mode = false
 	changed.emit()
 	return true
+
+
+## Create a tower on cell `c` without charging (used by try_build and by loading a save). `paid` = its price.
+func place_tower(c: Vector2i, paid: int):
+	wb.take_cell(c)
+	var t := Node3D.new()
+	t.set_script(TowerScript)
+	add_child(t)
+	t.position = cell_world(c)
+	t.setup(self, next_tid, c)
+	t.set_meta("paid", paid)
+	next_tid += 1
+	towers.append(t)
+	return t
 
 
 func select_tower(t) -> void:
@@ -645,12 +678,19 @@ func tower_at_cell(c: Vector2i):
 	return null
 
 
-func sell_tower(t) -> void:
+## Sell a tower: its rune goes back to the inventory (the sale fails if the inventory is full) and a share of
+## the price paid comes back as mana stones.
+func sell_tower(t) -> bool:
+	if t == null or not t in towers:
+		return false
+	if t.rune != null and store.free_slots() == 0:
+		notify("Inventory is full — free a slot first.")
+		return false
+	var refund: int = economy.tower_refund(t)
 	if t.rune != null:
-		if not inv_put(t.rune):
-			notify("Inventory is full.")
-			return
-	stones += int((4 + 2 * (towers.size() - 1)) * 0.5)
+		inv_put(t.rune)
+		t.set_rune(null)
+	stones += refund
 	t.cleanup()
 	towers.erase(t)
 	wb.buildable[t.cell] = true
@@ -658,6 +698,7 @@ func sell_tower(t) -> void:
 		selected_tower = null
 	t.queue_free()
 	changed.emit()
+	return true
 
 
 func _unhandled_input(ev: InputEvent) -> void:
@@ -740,6 +781,8 @@ func apply_setting(key: String, value) -> void:
 func _apply_settings() -> void:
 	if cam_rig:
 		cam_rig.pan_speed = 1.15 * float(settings.get("cam_speed", 1.0))
+		var ang: Array = CAM_ANGLES.get(str(settings.get("cam_angle", "45")), CAM_ANGLES["45"])
+		cam_rig.pitch_deg = float(ang[0])
 		cam_rig.edge_margin = 24.0 if settings.get("edge_pan", false) else 0.0
 	if not args.has("shots"):
 		var fs: bool = settings.get("fullscreen", false)
@@ -749,92 +792,98 @@ func _apply_settings() -> void:
 
 
 static var pending_load = null
+const SAVE_VERSION := SaveSystem.VERSION
 
 
-func save_game() -> void:
-	var tw := []
-	for t in towers:
-		tw.append({"cell": [t.cell.x, t.cell.y], "rune": t.rune})
-	var data := {"version": 1, "seed": seed_value, "wave": wave, "mana": mana, "stones": stones, "castle_hp": castle_hp,
-		"inventory": inventory, "towers": tw, "craft": craft}
-	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
-	if f == null:
-		notify("Could not save.")
-		return
-	f.store_string(JSON.stringify(data))
-	notify("Game saved (wave %d)." % wave)
+func serialize() -> Dictionary:
+	return saves.serialize()
 
 
-func load_game() -> void:
-	if not FileAccess.file_exists(SAVE_PATH):
-		notify("No saved game yet.")
-		return
-	var d = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH))
-	if not d is Dictionary:
-		notify("The save file is damaged.")
-		return
-	pending_load = _ints(d)
+## Apply a save Dictionary to this (freshly built, same seed) game.
+func restore(d: Dictionary) -> bool:
+	return saves.restore(SaveSystem.ints(d))
+
+
+func save_game(path := SAVE_PATH) -> bool:
+	return saves.save(path)
+
+
+## Validates the file first; a bad file changes nothing. A save of the current map is applied in place; a save of
+## another map reloads the scene with that seed.
+func load_game(path := SAVE_PATH) -> bool:
+	var d = saves.read(path)
+	if d == null:
+		return false
+	if int(d.seed) == seed_value:
+		_clear_run()
+		return saves.restore(d)
+	pending_load = d
 	get_tree().reload_current_scene()
+	return true
 
 
-## JSON turns every number into a float; rune grades must be ints again.
-func _ints(v):
-	if v is Dictionary:
-		var o := {}
-		for k in v:
-			o[k] = int(v[k]) if k == "grade" and v[k] != null else _ints(v[k])
-		return o
-	if v is Array:
-		return v.map(func(x): return _ints(x))
-	return v
-
-
-func _apply_load(d: Dictionary) -> void:
-	wave = int(d.wave)
-	mana = float(d.mana)
-	stones = int(d.stones)
-	castle_hp = int(d.castle_hp)
+## Remove everything a run owns (towers, summons, enemies, fields, items, prices) — the map stays.
+func _clear_run() -> void:
+	for t in towers.duplicate():
+		t.cleanup()
+		wb.buildable[t.cell] = true
+		t.queue_free()
+	towers.clear()
+	for e in enemies:
+		e.queue_free()
+	enemies.clear()
+	to_spawn.clear()
+	for f in combat.fields:
+		vfx.field_end(f)
+	combat.fields.clear()
 	for i in INV_SIZE:
-		inventory[i] = d.inventory[i] if i < d.inventory.size() else null
-	for t in d.towers:
-		var c := Vector2i(int(t.cell[0]), int(t.cell[1]))
-		stones += tower_cost()
-		if try_build(c) and t.rune != null:
-			towers.back().set_rune(t.rune)
+		inventory[i] = null
+	craft = {"base": null, "pending": {}, "output": null}
+	economy = Economy.new(self)
+	selected_tower = null
 	build_mode = false
-	if d.has("craft") and d.craft is Dictionary:
-		craft = {"base": d.craft.get("base"), "pending": d.craft.get("pending", {}), "output": d.craft.get("output")}
 	wave_state = "build"
-	countdown = 20.0
-	notify("Game loaded — wave %d." % (wave + 1))
-	changed.emit()
 
 
 # ------------------------------------------------------------------ inventory / runes
+# Rune moves live in rune_store.gd (all-or-nothing, never lose or duplicate a rune); these wrappers keep the
+# public API and refresh the HUD. Every operation returns true on success.
 
 func rune_cost(rid: String) -> int:
-	return int(spec.economy.rune_buy_g1_mana[spec.runes[rid].buy])
+	return economy.rune_cost(rid)
 
 
 func inv_put(node) -> bool:
-	for i in INV_SIZE:
-		if inventory[i] == null:
-			inventory[i] = node
-			changed.emit()
-			return true
-	return false
+	var ok: bool = store.put(node)
+	if ok:
+		changed.emit()
+	return ok
 
 
-func buy_rune(rid: String) -> void:
+func inv_free_slots() -> int:
+	return store.free_slots()
+
+
+func all_items() -> Array:
+	return store.all_items()
+
+
+func _done(ok: bool) -> bool:
+	changed.emit()
+	return ok
+
+
+func buy_rune(rid: String) -> bool:
 	var c := rune_cost(rid)
 	if mana < c:
 		notify("Not enough mana (%d needed)." % c)
-		return
-	if not inv_put({"rune": rid, "grade": 1, "grafts": {}}):
+		return false
+	if not store.put({"rune": rid, "grade": 1, "grafts": {}}):
 		notify("Inventory is full.")
-		return
+		return false
 	mana -= c
-	changed.emit()
+	economy.on_rune_bought(rid)
+	return _done(true)
 
 
 func combine_fee(grade: int) -> int:
@@ -842,65 +891,32 @@ func combine_fee(grade: int) -> int:
 
 
 func combine(a: int, b: int) -> bool:
-	var ra = inventory[a]
-	var rb = inventory[b]
-	if a == b or ra == null or rb == null:
-		return false
-	if ra.rune != rb.rune or int(ra.grade) != int(rb.grade):
-		notify("Combine needs two runes of the same type and grade.")
-		return false
-	if int(ra.grade) >= 5:
-		notify("G5 is the highest grade.")
-		return false
-	var fee := combine_fee(int(ra.grade))
-	if mana < fee:
-		notify("Combining costs %d mana." % fee)
-		return false
-	mana -= fee
-	var out := {"rune": ra.rune, "grade": int(ra.grade) + 1, "grafts": {}}
-	for src in [ra, rb]:
-		for ab in src.grafts:
-			if not out.grafts.has(ab):
-				out.grafts[ab] = []
-			out.grafts[ab] += src.grafts[ab]
-	inventory[a] = out
-	inventory[b] = null
-	notify("%s G%d forged." % [rl.rune_name(out.rune), out.grade])
-	changed.emit()
-	return true
+	return _done(store.combine(a, b))
 
 
-func socket(t, idx: int) -> void:
-	var r = inventory[idx]
-	if r == null or t == null:
-		return
-	inventory[idx] = t.rune          # swap: the old rune goes back
-	t.set_rune(r)
-	vfx.ring(t.position, element_color(spec.runes[r.rune].element, "glow"), 1.8, 0.45)
-	vfx.particles(t.position + Vector3(0, 2.0, 0), element_color(spec.runes[r.rune].element, "hot"), element_color(spec.runes[r.rune].element), 16, 2.2, 0.08, 0.5)
-	changed.emit()
+func _socket_fx(t) -> void:
+	if t != null and t.rune != null:
+		var el: String = spec.runes[t.rune.rune].element
+		vfx.ring(t.position, element_color(el, "glow"), 1.8, 0.45)
+		vfx.particles(t.position + Vector3(0, 2.0, 0), element_color(el, "hot"), element_color(el), 16, 2.2, 0.08, 0.5)
 
 
-func socket_output(t) -> void:
-	if craft.output == null or t == null:
-		return
-	var old = t.rune
-	t.set_rune(craft.output)
-	craft.output = null
-	if old != null:
-		inv_put(old)
-	vfx.ring(t.position, element_color(spec.runes[t.rune.rune].element, "glow"), 1.8, 0.45)
-	changed.emit()
+func socket(t, idx: int) -> bool:
+	var ok: bool = store.socket(t, idx)
+	if ok:
+		_socket_fx(t)
+	return _done(ok)
 
 
-func unsocket(t) -> void:
-	if t.rune == null:
-		return
-	if inv_put(t.rune):
-		t.set_rune(null)
-	else:
-		notify("Inventory is full.")
-	changed.emit()
+func socket_output(t) -> bool:
+	var ok: bool = store.socket_output(t)
+	if ok:
+		_socket_fx(t)
+	return _done(ok)
+
+
+func unsocket(t) -> bool:
+	return _done(store.unsocket(t))
 
 
 func recipe(node) -> String:
@@ -919,31 +935,12 @@ func describe(node) -> String:
 
 # ------------------------------------------------------------------ craft table
 
-func craft_set_base(idx: int) -> void:
-	var r = inventory[idx]
-	if r == null:
-		return
-	if craft.base != null:
-		_craft_return_all()
-	craft.base = r
-	craft.pending = {}
-	inventory[idx] = null
-	changed.emit()
+func craft_set_base(idx: int) -> bool:
+	return _done(store.set_base(idx))
 
 
-func craft_clear() -> void:
-	_craft_return_all()
-	changed.emit()
-
-
-func _craft_return_all() -> void:
-	if craft.base != null:
-		inv_put(craft.base)
-	for ab in craft.pending:
-		for d in craft.pending[ab]:
-			inv_put(d)
-	craft.base = null
-	craft.pending = {}
+func craft_clear() -> bool:
+	return _done(store.clear_table())
 
 
 func open_abilities(node) -> Array:
@@ -964,50 +961,16 @@ func graft_check(ability: String, donor) -> Array:
 	return _graft_cache[key]
 
 
-func craft_add(ability: String, idx: int) -> void:
-	var d = inventory[idx]
-	if d == null or craft.base == null:
-		return
-	var res: Array = graft_check(ability, d)
-	if not res[0]:
-		var why: String = res[1][0] if res[1].size() > 0 else "incompatible"
-		notify("Graft rejected: " + why)
-		return
-	if not craft.pending.has(ability):
-		craft.pending[ability] = []
-	craft.pending[ability].append(d)
-	inventory[idx] = null
-	changed.emit()
+func craft_add(ability: String, idx: int) -> bool:
+	return _done(store.add_pending(ability, idx))
 
 
-func craft_remove_pending(ability: String, i: int) -> void:
-	var d = craft.pending[ability][i]
-	craft.pending[ability].remove_at(i)
-	inv_put(d)
-	changed.emit()
+func craft_remove_pending(ability: String, i: int) -> bool:
+	return _done(store.remove_pending(ability, i))
 
 
-func craft_ungraft(ability: String, i: int) -> void:
-	# Ungraft: the donor (with its own sub-grafts) returns; the fee paid for it is lost.
-	var d = craft.base.grafts[ability][i]
-	if not inv_put(d):
-		notify("Inventory is full.")
-		return
-	craft.base.grafts[ability].remove_at(i)
-	if craft.base.grafts[ability].is_empty():
-		craft.base.grafts.erase(ability)
-	notify("Graft removed — the rune is back, the fee is lost.")
-	changed.emit()
-
-
-func _merged() -> Dictionary:
-	var out: Dictionary = craft.base.duplicate(true)
-	for ab in craft.pending:
-		if not out.grafts.has(ab):
-			out.grafts[ab] = []
-		for d in craft.pending[ab]:
-			out.grafts[ab].append(d.duplicate(true))
-	return out
+func craft_ungraft(ability: String, i: int) -> bool:
+	return _done(store.ungraft(ability, i))
 
 
 func craft_fee() -> int:
@@ -1022,33 +985,16 @@ func craft_fee() -> int:
 	return roundi(fee)
 
 
-func do_craft() -> void:
-	if craft.base == null or craft.pending.is_empty():
-		notify("Needs a base rune and at least one graft.")
-		return
-	if craft.output != null:
-		notify("Take the output rune first.")
-		return
-	var fee := craft_fee()
-	if mana < fee:
-		notify("Graft fee: %d mana." % fee)
-		return
-	mana -= fee
-	craft.output = _merged()
-	craft.base = null
-	craft.pending = {}
-	notify("Crafted — read the result on the output rune.")
-	changed.emit()
+func do_craft() -> bool:
+	return _done(store.craft())
 
 
-func take_output() -> void:
-	if craft.output == null:
-		return
-	if inv_put(craft.output):
-		craft.output = null
-	else:
-		notify("Inventory is full.")
-	changed.emit()
+func take_output() -> bool:
+	return _done(store.take_output())
+
+
+func output_to_slot(i: int) -> bool:
+	return _done(store.output_to_slot(i))
 
 
 # ------------------------------------------------------------------ demo / screenshots
@@ -1118,6 +1064,48 @@ func _savetest(after_load: bool) -> void:
 	load_game()
 
 
+## Headless economy probe: --econ <variant> builds the same 3 towers + one variant tower and plays waves at 3×,
+## printing per-wave rune mana income. Variants: none, mana1, mana3, mana5, fire3+mana5 (Mana grafted on Fire).
+func _econ_mode() -> void:
+	mana = 0.0
+	stones = 999
+	var fixed := [{"rune": "fire", "grade": 3, "grafts": {}}, {"rune": "ice", "grade": 3, "grafts": {}}, {"rune": "electric", "grade": 3, "grafts": {}}]
+	var v := str(args.econ)
+	var extra = {"none": null, "mana1": {"rune": "mana", "grade": 1, "grafts": {}}, "mana3": {"rune": "mana", "grade": 3, "grafts": {}},
+		"mana5": {"rune": "mana", "grade": 5, "grafts": {}},
+		"fire3+mana5": {"rune": "fire", "grade": 3, "grafts": {"fire_hit": [{"rune": "mana", "grade": 5, "grafts": {}}]}}}.get(v, null)
+	var spots: Array = []
+	for c in map.buildable:
+		for p in map.path:
+			if absi(p.x - c.x) <= 1 and absi(p.y - c.y) <= 1:
+				spots.append(c)
+				break
+	var picks := [spots[2], spots[spots.size() / 4], spots[spots.size() / 2], spots[(spots.size() * 3) / 4]]
+	if args.has("front"):        # variant tower first on the path (it meets every enemy)
+		picks = [picks[3], picks[1], picks[2], picks[0]]
+	for i in 4:
+		var t = place_tower(picks[i], 0)
+		var r = fixed[i] if i < 3 else extra
+		if r != null:
+			t.set_rune(r)
+	set_speed(3.0)
+	var last_mana := 0.0
+	var last_income := 0.0
+	var waves := int(args.get("waves", "8"))
+	start_wave()
+	while wave <= waves and wave_state != "lost":
+		await get_tree().process_frame
+		if wave_state == "build":
+			var inc: float = economy.total_rune_income
+			print("ECON %s wave=%d rune_mana=%.1f total_mana_gain=%.1f hp=%d dmg=%.0f" % [v, wave, inc - last_income, mana - last_mana, castle_hp, combat.damage_real])
+			last_income = inc
+			last_mana = mana
+			if wave >= waves:
+				break
+			start_wave()
+	get_tree().quit()
+
+
 var _auto_last := -1
 
 
@@ -1139,6 +1127,19 @@ func _inv_find(rid: String) -> int:
 func _shots(dir: String) -> void:
 	await get_tree().create_timer(1.0).timeout
 	await _snap(dir, "00_build")
+	if args.has("inspect"):
+		# a 14-rune recipe with nested grafts, as an inspector readability check
+		var deep := {"rune": "fire", "grade": 4, "grafts": {
+			"fire_hit": [{"rune": "electric", "grade": 3, "grafts": {"chain": [{"rune": "ice", "grade": 2, "grafts": {}}, {"rune": "poison", "grade": 1, "grafts": {}}]}},
+				{"rune": "water", "grade": 3, "grafts": {"push": [{"rune": "blood", "grade": 1, "grafts": {}}]}}],
+			"burn": [{"rune": "mana", "grade": 3, "grafts": {}}, {"rune": "stone", "grade": 2, "grafts": {"armor_shred": [{"rune": "light", "grade": 1, "grafts": {}}]}}],
+			"fire_trail": [{"rune": "ice", "grade": 3, "grafts": {"freeze": [{"rune": "electric", "grade": 2, "grafts": {}}]}}, {"rune": "golem", "grade": 1, "grafts": {}}]}}
+		towers[0].set_rune(deep)
+		select_tower(towers[0])
+		hud.inspect(deep)
+		await get_tree().create_timer(0.5).timeout
+		await _snap(dir, "00_inspect")
+		hud.inspector.hide_inspector()
 	if args.has("tabs"):
 		hud.select_tab("shop")
 		await get_tree().create_timer(0.4).timeout

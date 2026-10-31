@@ -404,12 +404,15 @@
    "source": "user"
   },
   "sell": {
-   "mana_refund_pct": 0.6
+   "tower_refund_pct_of_paid": 0.5,
+   "note": "mana_refund_pct 0.6 was never implemented; towers refund mana stones",
+   "superseded": {
+    "mana_refund_pct": 0.6
+   }
   },
   "tower_cost_stones": {
-   "formula": "4 + 2*(n-1)",
-   "n": "kaçıncı kule (1'den)",
-   "source": "proposal"
+   "formula": "see economy.shop (multiplicative)",
+   "superseded": "4 + 2*(n-1) (until 2026-10-31)"
   },
   "mana_regen_per_s": 3,
   "mana_per_kill": 2,
@@ -423,6 +426,21 @@
    "mana": 80,
    "mana_stone": 6,
    "castle_hp": 20
+  },
+  "mana_income": {
+   "over_cap_eff": 0.25,
+   "note": "Mana from siphon/mark per producing Mana node: above runes.mana.grades[g].income_cap mana/s only over_cap_eff of the excess counts. Overkill damage never becomes mana. PROVISIONAL.",
+   "source": "proposal 2026-10-31"
+  },
+  "shop": {
+   "rune_price_growth": 1.15,
+   "rune_price_max_mult": 3.0,
+   "rune_price_decay_keep": 0.5,
+   "tower_cost_base": 4,
+   "tower_cost_growth": 1.25,
+   "tower_sell_refund": 0.5,
+   "note": "Rune price = base x growth^k (k = recent purchases of that rune, capped at max_mult; each cleared wave keeps floor(k*decay_keep)). Tower price = base x growth^owned; selling refunds tower_sell_refund of the price paid. PROVISIONAL multiplicative pricing (user decision: prices grow multiplicatively; ratios not final).",
+   "source": "user decision + proposal values 2026-10-31"
   }
  },
  "craft_ui": {
@@ -1880,25 +1898,29 @@
    "grades": {
     "1": {
      "hit": 4.5,
-     "siphon": 0.6
+     "siphon": 0.6,
+     "income_cap": 2.5
     },
     "2": {
      "hit": 6.5,
-     "siphon": 0.7
+     "siphon": 0.7,
+     "income_cap": 4.0
     },
     "3": {
      "hit": 10.0,
      "siphon": 0.75,
      "mark_pct": 0.2,
      "mark_r": 1.0,
-     "mark_dur": 4
+     "mark_dur": 4,
+     "income_cap": 6.0
     },
     "4": {
      "hit": 15.0,
      "siphon": 0.85,
      "mark_pct": 0.25,
      "mark_r": 1.2,
-     "mark_dur": 4
+     "mark_dur": 4,
+     "income_cap": 8.0
     },
     "5": {
      "hit": 22.0,
@@ -1906,7 +1928,8 @@
      "mark_pct": 0.3,
      "mark_r": 1.4,
      "mark_dur": 5,
-     "crystal": 2
+     "crystal": 2,
+     "income_cap": 11.0
     }
    },
    "ops": {
