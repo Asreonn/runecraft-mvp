@@ -56,6 +56,9 @@ Status labels used here and in `TODO.md`:
 - **Income cap:** mana from siphon or marks is soft-capped per producing Mana node.
   - The caps are 2.5 / 4 / 6 / 8 / 11 mana/s for G1–G5.
   - Above the cap only 25 % of the excess counts.
+  - A node is identified by its tower plus its place in the recipe. The siphon and the mark of one node share a
+    cap; two Mana donors or two towers with the same recipe have separate caps (parity findings N1–N3, fixed in
+    both engines).
 - **Crystals:** several crystal marks on one enemy crystallise **once**.
 - **Display:** the HUD shows the real income rate (passive regen plus recent rune income). The tower card shows
   "+x mana/s" per tower.
@@ -66,10 +69,10 @@ Status labels used here and in `TODO.md`:
 | Variant tower | Rune mana | Total mana gained | vs none |
 |---|---|---|---|
 | none | 0 | 1904 | — |
-| Mana G1 | 244 | 2111 | +11 % |
-| Mana G3 | 820 | 2578 | +35 % |
-| Mana G5 | 1458 | 3075 | +62 % |
-| Fire G3 with Mana G5 on `fire_hit` | 1192 | 2700 | +42 % |
+| Mana G1 | 244 | 2101 | +10 % |
+| Mana G3 | 689 | 2467 | +30 % |
+| Mana G5 | 1256 | 2873 | +51 % |
+| Fire G3 with Mana G5 on `fire_hit` | 1053 | 2561 | +35 % |
 
 Interpretation:
 - The economic contribution grows clearly with grade.

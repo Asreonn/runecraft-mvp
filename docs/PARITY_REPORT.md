@@ -1,100 +1,119 @@
 # C2 — Python/Godot combat parity
 
-Snapshot: `6c65ef4814973b294aadecee5bd44d404d3f1c74`. Engine `4.7.2.stable.arch_linux.ed1daf0bf`. Python `3.14.7`.
+Snapshot: `94a1c1aa9f8effb978078a058100c8ea87b2ccc7`. Engine `4.7.2.stable.arch_linux.ed1daf0bf`. Python `3.14.7`.
 
-**Parity is partial.** 136 cases: 99 combat cases, 36 expected compile rejections, and one incompatible-graft check. The original Python suite passes **121/121**. All 188 successful compiler comparisons across both runs match (canonical recipe, ops serialized at the source compiler’s 3-decimal precision, and rejected families). All 198 Godot combat runs finish finite, max generation ≤2 and ≤16 payload applications per root budget. **Three isolated bugs** are documented below, including one in the reference.
+**Parity is partial.** 147 cases: 110 combat cases, 36 expected compile rejections, and one incompatible-graft check. Python suite: **127/127**. All 188 successful compiler comparisons match. All 220 Godot combat runs finish finite, generation ≤2 and ≤16 payload applications per root budget.
 
-Total-damage equality within numerical tolerance: grid **42/99**, reference-event replay **67/99**. All compared metric equality: grid **35/99**, replay **57/99**. These are diagnostic counts, not an acceptance claim for the full game.
+**B1, B2 and B3 are fixed.** Three newly isolated income-cap defects are shared by Godot and Python; see minimal reproductions below. Matching the reference alone does not establish conformance to the per-node economy rule.
+
+Total-damage equality: grid **55/110**, replay **78/110**. All compared metric equality: grid **49/110**, replay **70/110**. Original-case counts and every changed metric are in the final commit-delta section.
 
 ## Re-run
 
 From the parent project:
 
 ```sh
-godot --headless --path asset-work/codex-mvp/parity/harness --script run_parity.gd
+asset-work/codex-mvp/parity/run.sh
+python3 asset-work/codex-mvp/parity/validation/verify_repeat.py
 ```
 
-The entry point prepares fresh byte-identical source copies, runs the Python suite and reference, runs Godot grid and replay modes, then regenerates this report. To confine even Godot engine startup directories to this project, use `asset-work/codex-mvp/parity/run.sh` (same command, local XDG directories). No network is used by the harness after the initial clone. A nonzero exit indicates a harness/invariant failure; documented gameplay parity differences are findings, not harness failures.
+The equivalent core command remains `godot --headless --path asset-work/codex-mvp/parity/harness --script run_parity.gd`. The wrapper also keeps engine startup data/config/cache under this directory. Preparation copies sources byte for byte, executes the native Python suite and reference, and runs Godot grid and reference-event replay. The report is regenerated from raw results. No game or reference logic is patched. Nonzero exits indicate harness/invariant failures; documented parity and contract findings are not silently converted into implementation acceptance.
 
-Python side only: `python3 asset-work/codex-mvp/parity/python_runner.py prepare`; regenerate the report from saved results: `python3 asset-work/codex-mvp/parity/python_runner.py report`.
+Python only: `python3 asset-work/codex-mvp/parity/python_runner.py prepare`; report only: same script with `report`.
 
 ## Method and limits
 
-- Inputs: every scenario with `towers` or `recipe`, the incompatible graft, every one of 13 runes at G1/G3/G5, scenario comparison baselines, all six sibling donor permutations, graft depth 3/4, every receiver ability just below its unlock grade, and direct combat probes.
-- Default wave is exactly the reference: 6 enemies, 120 HP, spacing 0.6 tile, armor 10%, speed 1 tile/s, duration 14 s, dt=0.05 s, tower at (6,2), range 4. Per-rune attack periods and summon lifetime/cadence come from the identical JSON spec. Tower overlap is intentional for multi-tower tests.
-- The row is X, Y-up game coordinates use world X=2×tile X and Z=0. Towers sit at cell (6,-2). Enemy path distance is offset by +64 tiles to preserve the reference negative start positions without hitting the game path-start clamp; rendered position subtracts that origin. This offset can shift exact floating-point ties by an ulp. Direct probes start at X=6 with configurable spacing; their full actions are persisted in `harness/cases.json`.
-- Grid mode uses unchanged `tower.gd` attack/summon methods, unchanged `enemy.gd` status access and speed, and unchanged `combat.gd`/`rune_lib.gd`. Scene/GLB setup and enemy visuals are bypassed; no art is loaded. A stub board chooses a deterministic adjacent free cell for summons. The enemy visual adapter publishes the straight-row position at the same point in the frame as game.gd; tile_pos remains the native global-position lookup in grid mode.
-- All combat overrides in `observed_combat.gd` call super with unchanged arguments. Extra budget IDs/counters observe applications; no op, budget-left value or combat decision is patched. Python wrappers similarly observe the original classes; every normal run is cross-checked against unwrapped `sim.simulate` metrics during preparation.
-- VFX methods are no-ops except observation and required gameplay callbacks. Projectiles hit immediately to match the reference; meteor and lava callbacks use a deterministic simulated-time queue. The real VFX projectile travel duration is intentionally excluded. There is no rendering, physical play, curved-map/topology or real VFX lifecycle acceptance in this evidence.
-- Replay feeds the Python tower/timer root events (raw ops, target IDs, time and position) into unchanged Godot combat; status ticks, movement and fields still execute in Godot. Replay reads enemy position directly from path distance to isolate the stale transform issue. It bypasses Godot host targeting/summon loops; it does **not** remove one-cell fields, Godot Vector2 precision or the trail-initialization bug. Compiler equality is checked separately before this replay is interpreted.
-- Mana means combat-earned mana only: siphon + marks + 2 per kill. Passive +3/s and starting balances are excluded on both sides because the reference omits them. Stones include one per normal enemy plus mark crystal bonuses. Damage is uncapped dealt damage, with capped damage also shown. Status counts count apply_status calls, including refreshes; freezes count freeze calls, including novas. Hops count selected targets, even if their payload budget is exhausted, matching the reference.
-- Root application distributions and individual records are saved. “Application” means a successful apply_payload budget decrement; direct deal/freeze/status calls do not consume that budget in either engine. The generation ceiling is for propagation; max_status_gen separately records the generation used by apply_status. Finite means bounded simulated steps, finite reported values and no event-watchdog overflow, not a proof for arbitrary future recipes.
-- Relative difference is `(Godot − Python) / |Python|`; a zero reference with a nonzero result is “new”. Only absolute ≤1e-6 plus relative ≤1e-9 is numerical tolerance. Discrete count changes are never silently accepted as a percentage tolerance. Source hashes and spec identity are in `results/provenance.json`; raw full-precision results are in `results/python.json` and `results/godot.json`.
+- Original coverage is retained: every scenario with towers/recipe, incompatible graft, all 13 runes at G1/G3/G5, comparison baselines, six sibling permutations, depth 3/4, receiver grade locks, all original direct probes. Added direct cases cover same-node caps, independent towers, second rollover, separate mark owners, multiple siphon donors, overkill marks, single crystallization and a real trail cell crossing.
+- Default wave: six enemies, 120 HP, 0.6-tile spacing, 10% armor, speed 1 tile/s, duration 14 s, dt 0.05 s, tower (6,2), range 4. Periods/lifetimes come from the identical runtime/reference JSON spec. Tower overlap is intentional.
+- Straight lane: world X=2×tile X, world Z=0; tower cell (6,-2). Path distance has +64-tile origin to avoid the native start clamp. Direct probes start at tile X=6. The offset can shift exact floating ties. Native enemy.sync_position() now calls the adapter world_pos() immediately; grid tile_pos remains the native transform read. No adapter recreates the B1 fix.
+- Unchanged tower attack/summon methods, combat handlers, compiler, enemy statuses/speed and the real scripts/economy.gd run in the harness. Board/path/visual adapters replace the scene and art. The summon VFX stub accepts the new owner argument and records group/meta, but this is not acceptance evidence for real VFX ownership or cleanup.
+- Observer overrides delegate unchanged arguments to super. Python normal runs are cross-checked against unwrapped sim.simulate; all source copies and spec hashes are recorded in results/provenance.json.
+- Projectiles hit immediately to match the reference. Lava/meteor callbacks use deterministic simulated-time scheduling. Replay supplies Python tower/timer root events while Godot retains status/movement/field execution; it bypasses host targeting/summon loops. Grid fields vs radius fields and floating-point boundaries remain.
+- Mana includes siphon, marks and 2 per kill; passive regen/starting balances are excluded. Soft caps use the real economy implementation, reset at integer simulated seconds, and exclude overkill. Stones include normal drops plus one best crystal bonus. Diagnostic damage and element totals remain uncapped; damage_capped removes overkill. Godot by_tower now records capped HP damage because the production callback changed, while Python by_tower remains uncapped; this is explicitly excluded from direct cross-engine equality.
+- Status counts include refresh calls. Hops include selected targets even with exhausted payload budgets. Root application records and distributions are saved; direct damage/status calls do not consume application budgets. Finite means bounded steps, finite values and no event watchdog overflow.
+- Numeric tolerance is abs≤1e-6 plus rel≤1e-9. Discrete counts require equality. Bleed counters differ in definition: Python nominal pre-armor movement damage vs observed Godot actual blood damage including descendants. Element totals are comparable.
+- Native field VFX registration/lookup/merge/eviction/expiry is additionally exercised headlessly with unmodified vfx.gd; meteor/lava stale-callback cancellation uses native tower.set_rune(null) with the deterministic VFX timer stub. No rendered appearance, physical play, curved topology, real projectile/summon visual lifecycle, inventory transactions or save/load acceptance is claimed. rune_store.gd, save_system.gd and DECISIONS.md are reviewed/hashed context; their separate invariant suite is outside the original parity coverage.
 
 ## Difference classification
 
 | ID | Class | Evidence / meaning |
 |---|---|---|
-| E1 | Expected structural difference | Grid range membership vs continuous radius: `repo/scripts/tower.gd:109`; Python `sim.py:569`. Cell-edge target timing can add/remove a whole attack. |
-| E2 | Expected structural difference | One-cell fields, refresh/merge and cell-crossing trail placement vs Python radius fields and distance-threshold trail drops: `repo/scripts/combat.gd:347`, `:389`, `:405`; `sim.py:436`, `:461`. This can change damage, slow duration, deaths, marks and subsequent budgets even in replay. B2 is an additional isolated implementation defect. |
-| E3 | Expected structural / numeric boundary difference | Godot Vector2 spatial comparisons and transformed positions vs Python scalar binary64. At exact spacing/range boundaries, a different tied neighbour or one-step exposure can change downstream discrete events. This is distinguished from harmless arithmetic tolerance. Direct `boundary-pierce` fixes targets at 6.2 and 7.1 to exercise the 0.9-tile pierce boundary. |
-| E4 | Expected structural difference | Snapped meteor landings, actual slowed target lead, 2D multi-impact offsets and adjacent-cell summons, volcano initial 0.6 vs 0.5 s, golem/beetle approach and reach differ: `repo/scripts/tower.gd:173`, `:187`, `:192`, `:226`, `:271`; `repo/scripts/combat.gd:476`. Replay removes the host portion. |
-| B1/B2/B3 | BUG | Isolated reproductions below establish defects; B3 is in Python. “exposure” in an aggregate row means the recipe can exercise the defect; it is not a claim that every downstream numeric delta has been individually attributed. |
+| E1 | Expected structural | Cell-centre range membership vs continuous radius: tower.gd:124; sim.py:600. A boundary can add/remove a whole attack. |
+| E2 | Expected structural | One-cell field merge/refresh and cell-crossing trails vs radius fields and distance drops: combat.gd:338,385,400,418; sim.py:441,483. B2 is repaired; this deliberate structural difference remains. |
+| E3 | Spatial numeric boundary | Godot Vector2 vs Python binary64 can choose a different tied neighbour or exposure step. boundary-pierce still selects one Python hop vs zero Godot hops at 6.2/7.1. Discrete consequences are not treated as arithmetic tolerance. |
+| E4 | Expected structural | Snapped meteor landings, slowed lead, 2D offsets, adjacent summons, volcano initial 0.6 vs 0.5 s, summon approach/reach: tower.gd:188,210,245,290. Replay removes host differences. |
+| N1/N2/N3 | New shared economy defects | Native runtime and reference agree numerically but violate the new per-producing-node cap. Independently tested below; not a new Godot-only parity divergence. |
 
-Aggregate rows can mix E1–E4 and a bug exposure. These classifications identify concrete code-path differences, not an additive causal decomposition of each element/status count. Reference-event replay is an isolation tool, not a promise of bitwise geometric parity.
+Aggregate scenario differences can mix E1–E4. Commit deltas caused by B1/B2 repairs can cascade through targets, fields, deaths, status calls, budgets and mana. Path exposure is reported without claiming an additive attribution of every downstream number.
 
 ## Prioritised bugs and minimal reproductions
 
-| Priority | ID | Location | Impact |
+| Priority | ID | Location | Finding |
 |---|---|---|---|
-| P1 | B1 | Godot `combat.gd:329`, `enemy.gd:107` | Propagation uses a pre-push transform; the direct reproduction adds two unintended hops. |
-| P1 reference | B3 | Python `sim.py:194` | Lethal-hit siphon payout is omitted from the reference oracle. |
-| P2 | B2 | Godot `combat.gd:192`, `:349` | Fractional burn start creates an extra trail without a cell crossing. |
+| P2 | N1 | repo/scripts/combat.gd:128; repo/design/rune_mechanics/mechanics/sim.py:249 | Mark income source omits tower identity, so identical Mana nodes on separate towers share a cap even in disjoint areas. |
+| P2 | N2 | repo/scripts/combat.gd:92–102; repo/design/rune_mechanics/mechanics/sim.py:206–211 | Multiple siphon nodes are summed and charged to the first node's cap/grade; the other nodes' independent caps disappear. |
+| P2 | N3 | repo/scripts/combat.gd:102,128; repo/design/rune_mechanics/mechanics/sim.py:211,249 | One Mana node gets separate siphon and mark caps instead of one combined node cap. |
 
-### B1 — P1 — forced move uses a stale enemy transform for propagation
+### N1 — separate mark owners incorrectly share an income bucket
 
-`repo/scripts/combat.gd:329` updates only `e.s`; `repo/scripts/enemy.gd:107` reads `global_position` in tile_pos. game.gd refreshes the transform after ordinary movement (`:344`), before tower attacks; a push during a tower event has no refresh before follow-on propagation (`combat.gd:364` and `:438`). Thus chain range and follow-on fields use the pre-push position.
+**Minimal reproduction:** `mark-cap-distinct-towers`: two enemies, HP 10000, tile X=6 and 16. Apply mana3 mark to enemy 0 from tower 0 and enemy 1 from tower 1. At t=0 deal 20 physical damage to each. Each takes 18 HP damage and generates 3.6 mana, below its G3 cap of 6. Expected independent-node income **7.2**. Python, Godot grid and replay each return **6.3**. The second source sees only 2.4 room, yielding 2.4+1.2×0.25=2.7. Same-tower control correctly returns 6.3. The runtime key is mark|op.uid; reference key is (mark, op.uid). Compiler UIDs repeat across identical tower recipes. This is separate from the pre-existing same-status-on-one-enemy design question: these marks are on different enemies ten tiles apart.
 
-**Repro:** `push-chain-stale-position`: HP 10000, enemies at X=6,8,10,…; one `water3{water_hit:[electric3]}` hit on enemy 0. Wet extends chain reach to 2.25 tiles. Push moves victim to 5.65, so the next enemy is 2.35 away and Python produces zero hops. Grid Godot uses X=6, finds distance 2, and produces two hops. Python damage **18**, Godot grid **29.91645** (+66.2025%); replay using authoritative path position returns to **18**. No game code was fixed.
+### N2 — multiple siphon producers collapse into the first producer
 
-### B2 — P2 — new burn instance drops a trail without crossing a cell
+**Minimal reproduction:** `siphon-two-nodes`: one HP-10000 enemy at X=6; hit once with `fire1{fire_hit:[mana1,mana1]}`. Resolved HP damage is **13.2525**. Each distinct donor UID has siphon 0.42, so raw income is **5.56605 per node**. Independent G1 caps yield 2×(2.5+(5.56605−2.5)×0.25)=**6.533025**. All implementations return **4.658025**, applying one cap to combined raw 11.1321. Source code selects the first siphon's UID/grade. No proposed correction is applied by this harness.
 
-`repo/scripts/combat.gd:192` stores an unsnapped `last_drop = e.tile_pos()`, but `:349` compares it with a snapped cell coordinate. A burn applied at a fractional position necessarily fails that equality on the next movement, even in the same cell. The intended grid-crossing condition is therefore not respected for the first drop.
+### N3 — one Mana producer has independent siphon and mark caps
 
-**Repro:** `trail-spurious-cell-drop`: enemy at X=6.25; apply native `fire3` burn; move forward 0.01 tile, still in cell 6. Python creates **0** trail fields, Godot creates **1** in both grid/replay. This is distinct from the intentional one-cell-vs-radius rule. Subsequent drops use snapped last_drop, so the defect is first-drop specific.
+**Minimal reproduction:** `cap-shared-node-channels`: one HP-10000 enemy at X=6, two native mana3 hits from tower 0 at t=0. Each hit removes 9 HP. Siphon raw is 13.5 total; the mark applied by the first hit adds 1.8 on the second. One producing G3 node should cap combined raw 15.3 at 6 + (15.3−6)×0.25 = **8.325**. All implementations instead pay siphon **7.875** plus mark **1.8**, total **9.675**. Siphon and mark use distinct ability/channel keys, so they never consume one shared node bucket. This is a rule violation against DECISIONS.md per-producing-Mana-node cap, not a claim of Godot/Python disagreement.
 
-### B3 — P1 reference correctness — lethal hit skips mana siphon in Python
+### Repaired B1 / B2 / B3 — exact original probes
 
-`repo/design/rune_mechanics/mechanics/sim.py:194` returns from apply_payload after the target dies, before reaching the siphon aggregation at `:205`. Godot `repo/scripts/combat.gd:79` breaks the op loop and reaches the payout at `:90`. The rule “damage in this event converts to mana” includes a lethal hit; Godot matches that rule here.
+| Probe / metric | Python before → after | Godot grid before → after | Godot replay before → after | Status |
+|---|---|---|---|---|
+| push-chain-stale-position / damage | 18 → 18 | 29.91645 → 18 | 18 → 18 | fixed |
+| push-chain-stale-position / hops | 0 → 0 | 2 → 0 | 0 → 0 | fixed |
+| trail-spurious-cell-drop / fields | 0 → 0 | 1 → 0 | 1 → 0 | fixed |
+| siphon-lethal-mana1 / mana_siphon | 0 → 0.6 | 2.43 → 0.6 | 2.43 → 0.6 | fixed |
+| siphon-lethal-mana1 / mana | 2 → 2.6 | 4.43 → 2.6 | 4.43 → 2.6 | fixed |
+| siphon-lethal-mana3 / mana_siphon | 0 → 0.75 | 6.75 → 0.75 | 6.75 → 0.75 | fixed |
+| siphon-lethal-mana3 / mana | 2 → 2.75 | 8.75 → 2.75 | 8.75 → 2.75 | fixed |
 
-**Repro:** `siphon-lethal-mana1`: HP=1, armor=10%, direct `mana1` hit deals 4.05 uncapped damage. Python total mana **2**, siphon **0**; Godot total mana **4.43**, siphon **2.43**. `mana3` repeats it: damage **9**, Python total **2**, Godot **8.75**. Both get one kill and one stone. This is not a reason to alter Godot to reproduce the reference defect.
+B1: native combat.gd:341 calls enemy.gd:108 sync_position immediately after movement; the original 2.35-tile post-push gap now yields zero unintended hops. B2: combat.gd:202 initializes last_drop with _cellv; moving 6.25→6.26 stays in cell 6 and creates no trail. Control 6.49→6.51 still creates one grid trail. B3: sim.py:195 now breaks instead of returning before payout. Lethal mana1/mana3 pay 0.6/0.75 for the one HP actually removed; old Godot payouts 2.43/6.75 included overkill. All retain one kill and one stone.
 
 ## Targeted probe results
 
-| Probe | Python | Godot grid | Godot replay | Interpretation |
-|---|---|---|---|---|
-| summon-loop-volcano: root attack events | 8 | 8 | 8 | Repeated attacks execute; fixed 30 s cap, pack exits earlier. Actual elapsed times below. |
-| summon-loop-golem: root attack events | 18 | 17 | 18 | Repeated attacks execute; fixed 30 s cap, pack exits earlier. Actual elapsed times below. |
-| summon-loop-hive: root attack events | 62 | 61 | 62 | Repeated attacks execute; fixed 30 s cap, pack exits earlier. Actual elapsed times below. |
-| same-status-two-towers: status_instances | 1 | 1 | 1 | See case table / raw state. |
-| forced-move-bleed: bleed_forced | 1.225 | 1.1025 | 1.1025 | See case table / raw state. |
-| frozen-death-shards: shards | 1 | 1 | 1 | See case table / raw state. |
-| siphon-tick: mana_siphon | 1.550745 | 1.550745 | 1.550745 | See case table / raw state. |
-| mark-economics: mana_mark | 11.91 | 11.91 | 11.91 | See case table / raw state. |
-| mark-economics: stones | 3 | 3 | 3 | See case table / raw state. |
-| budget-dense-64: max_budget_used | 16 | 16 | 16 | See case table / raw state. |
+Native field/tower probes: **16/16** (results/feature-probes.json). Field cap 8; first fid 1 survives dictionary mutation and merge; eviction and expiry clear real VFX lookups. One meteor callback deals 14.4 in its unchanged control and 0 after native rune clear; two lava callbacks deal 70.2 in control and 0 after clear. Generation increases and summon state clears. These are process/state checks, not rendered acceptance.
 
-All six sibling permutations produce identical metrics within each implementation. Depth-3/4 grafts compile and terminate; the table shows their differing combat outcomes. Receiver grade locks are rejected with `locked_on_receiver` in both implementations. The dense 64-enemy stress probe reaches 16 applications, so the cap is exercised rather than merely unchallenged.
+| Probe / metric | Python | Godot grid | Godot replay | Interpretation |
+|---|---:|---:|---:|---|
+| summon-loop-volcano / host_attacks | 8 | 8 | 8 | Repeated native host attacks |
+| summon-loop-golem / host_attacks | 18 | 17 | 18 | Repeated native host attacks |
+| summon-loop-hive / host_attacks | 62 | 61 | 62 | Repeated native host attacks |
+| same-status-two-towers / status_instances | 1 | 1 | 1 | Shared refresh, not independent stacking |
+| forced-move-bleed / bleed_forced | 1.225 | 1.1025 | 1.1025 | Counter definitions differ; see limits |
+| frozen-death-shards / shards | 1 | 1 | 1 | Death propagation |
+| siphon-tick / mana_siphon | 1.550745 | 1.550745 | 1.550745 | Tick income unchanged |
+| mark-economics / mana_mark | 9.21 | 9.21 | 9.21 | Overkill excluded |
+| mark-economics / stones | 3 | 3 | 3 | One crystal bonus |
+| budget-dense-64 / max_budget_used | 16 | 16 | 16 | Application cap exercised |
+| cap-same-node / mana_siphon | 3.09 | 3.09 | 3.09 | 2.5 cap, excess ×0.25 |
+| cap-distinct-towers / mana_siphon | 4.86 | 4.86 | 4.86 | Independent siphon owners |
+| cap-next-second / mana_siphon | 4.86 | 4.86 | 4.86 | Integer-second reset |
+| mark-cap-distinct-towers / mana_mark | 6.3 | 6.3 | 6.3 | N1: expected 7.2 |
+| mark-cap-same-tower / mana_mark | 6.3 | 6.3 | 6.3 | Control: expected 6.3 |
+| siphon-two-nodes / mana_siphon | 4.658025 | 4.658025 | 4.658025 | N2: expected 6.533025 |
+| cap-shared-node-channels / mana | 9.675 | 9.675 | 9.675 | N3: expected 8.325 |
+| mark-overkill / mana_mark | 0.3 | 0.3 | 0.3 | Only 1 HP converted |
+| crystal-single-mark / stones | 3 | 3 | 3 | 1 normal + 2 crystal |
+| crystal-two-marks / stones | 3 | 3 | 3 | 1 normal + 2 crystal, not 5 |
 
-Two identical fire3 burns from tower IDs 0 and 1 produce two application calls but one stored status instance and one 2.7-damage tick, attributed to the first tower in both engines. Both key statuses by op UID without tower ID (`combat.gd:174`; `sim.py:283`); a refresh neither changes ownership nor resets the spread-once flag. This is shared behavior, **not a parity bug**. Whether independently sourced burns should stack or own separate first-spread opportunities requires a design decision.
+All six sibling permutations remain identical within each implementation. Depth-3/4 grafts terminate. Receiver locks reject with locked_on_receiver. Two identical fire3 burns from different towers still store one instance and one 2.7-damage tick owned by the first tower (combat.gd:184; sim.py:306). This pre-existing shared behavior remains an open design decision in DECISIONS.md.
 
-Forced bleed counters differ in definition: Python records nominal pre-armor movement damage, while the Godot observer records actual blood damage during move (including descendants). Their existence is verified, but their magnitudes are not presented as directly comparable metrics. Element damage remains comparable.
-
-Verification: **1082/1082 checks passed**. Full check records: `results/verification.json`.
+Verification: **1233/1233 checks passed**. Full records: results/verification.json. Known N1/N2/N3 contract probes are reported findings, not claims that their intended values pass. Repeat determinism and unchanged clone/source-copy receipts are in validation/repeat-verification.json.
 
 ## Scenario tables
 
-Each table contains every requested metric, each nonzero element and status/hop kind, and per-root application histograms. Missing dictionary entries are zero. Grid is the actual runtime host on the straight lane; replay is the reference root-event stream through Godot combat. Compile-only cases have no invented damage numbers.
+Every original case and added control follows. Absent dictionary entries are zero. Per-root histograms exclude empty roots. Full raw state and root records are retained in results/python.json and results/godot.json.
 
 ### v4-01 (scenario)
 
@@ -102,8 +121,8 @@ Recipes: `fire3{burn:[electric1]}`
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 174.483 | 161.883 | -7.221% | 160.083 | -8.253% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| damage_capped | 174.483 | 161.883 | -7.221% | 160.083 | -8.253% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| damage | 174.483 | 158.283 | -9.285% | 158.283 | -9.285% | expected structural difference: E1, E3, E2 |
+| damage_capped | 174.483 | 158.283 | -9.285% | 158.283 | -9.285% | expected structural difference: E1, E3, E2 |
 | kills | 0 | 0 | 0% | 0 | 0% | equal |
 | mana | 0 | 0 | 0% | 0 | 0% | equal |
 | mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
@@ -115,7 +134,7 @@ Recipes: `fire3{burn:[electric1]}`
 | max_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_status_gen | 0 | 0 | 0% | 0 | 0% | equal |
 | max_budget_used | 1 | 1 | 0% | 1 | 0% | equal |
-| applications | 58 | 44 | -24.138% | 42 | -27.586% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| applications | 58 | 40 | -31.034% | 40 | -31.034% | expected structural difference: E1, E3, E2 |
 | rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
 | spread_status | 0 | 0 | 0% | 0 | 0% | equal |
 | status_instances | 1 | 1 | 0% | 1 | 0% | equal |
@@ -124,12 +143,12 @@ Recipes: `fire3{burn:[electric1]}`
 | host_attacks | 7 | 7 | 0% | 7 | 0% | equal |
 | finite | true | true | 0 | true | 0 | equal |
 | hops.total | 0 | 0 | 0% | 0 | 0% | equal |
-| by_element.fire | 146.7 | 134.1 | -8.589% | 132.3 | -9.816% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| by_element.fire | 146.7 | 130.5 | -11.043% | 130.5 | -11.043% | expected structural difference: E1, E3, E2 |
 | by_element.electric | 27.783 | 27.783 | 0% | 27.783 | 0% | tolerance (floating arithmetic) |
 | statuses.burn | 7 | 7 | 0% | 7 | 0% | equal |
-| fields.fire_trail | 38 | 15 | -60.526% | 14 | -63.158% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.with_applications | 58 | 44 | -24.138% | 42 | -27.586% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.using_1_applications | 58 | 44 | -24.138% | 42 | -27.586% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| fields.fire_trail | 38 | 12 | -68.421% | 12 | -68.421% | expected structural difference: E1, E3, E2 |
+| roots.with_applications | 58 | 40 | -31.034% | 40 | -31.034% | expected structural difference: E1, E3, E2 |
+| roots.using_1_applications | 58 | 40 | -31.034% | 40 | -31.034% | expected structural difference: E1, E3, E2 |
 
 ### v4-02 (scenario)
 
@@ -137,8 +156,8 @@ Recipes: `fire3{fire_hit:[electric3]}`
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 378.944392 | 335.744392 | -11.400% | 335.744393 | -11.400% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| damage_capped | 378.944392 | 335.744392 | -11.400% | 335.744393 | -11.400% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| damage | 378.944392 | 334.844393 | -11.638% | 333.044393 | -12.113% | expected structural difference: E1, E3, E2 |
+| damage_capped | 378.944392 | 334.844393 | -11.638% | 333.044393 | -12.113% | expected structural difference: E1, E3, E2 |
 | kills | 0 | 0 | 0% | 0 | 0% | equal |
 | mana | 0 | 0 | 0% | 0 | 0% | equal |
 | mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
@@ -150,7 +169,7 @@ Recipes: `fire3{fire_hit:[electric3]}`
 | max_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_status_gen | 1 | 1 | 0% | 1 | 0% | equal |
 | max_budget_used | 5 | 5 | 0% | 5 | 0% | equal |
-| applications | 165 | 115 | -30.303% | 115 | -30.303% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| applications | 165 | 114 | -30.909% | 112 | -32.121% | expected structural difference: E1, E3, E2 |
 | rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
 | spread_status | 14 | 14 | 0% | 14 | 0% | equal |
 | status_instances | 3 | 3 | 0% | 3 | 0% | equal |
@@ -159,13 +178,13 @@ Recipes: `fire3{fire_hit:[electric3]}`
 | host_attacks | 7 | 7 | 0% | 7 | 0% | equal |
 | finite | true | true | 0 | true | 0 | equal |
 | hops.total | 14 | 14 | 0% | 14 | 0% | equal |
-| by_element.fire | 305.64909 | 262.44909 | -14.134% | 262.44909 | -14.134% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| by_element.fire | 305.64909 | 261.54909 | -14.428% | 259.74909 | -15.017% | expected structural difference: E1, E3, E2 |
 | by_element.electric | 73.295302 | 73.295303 | 0% | 73.295303 | 0% | tolerance (floating arithmetic) |
 | statuses.burn | 21 | 21 | 0% | 21 | 0% | equal |
 | hops.mermi sekerek | 14 | 14 | 0% | 14 | 0% | equal |
-| fields.fire_trail | 98 | 15 | -84.694% | 14 | -85.714% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.with_applications | 137 | 87 | -36.496% | 87 | -36.496% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.using_1_applications | 130 | 80 | -38.462% | 80 | -38.462% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| fields.fire_trail | 98 | 12 | -87.755% | 11 | -88.776% | expected structural difference: E1, E3, E2 |
+| roots.with_applications | 137 | 86 | -37.226% | 84 | -38.686% | expected structural difference: E1, E3, E2 |
+| roots.using_1_applications | 130 | 79 | -39.231% | 77 | -40.769% | expected structural difference: E1, E3, E2 |
 | roots.using_5_applications | 7 | 7 | 0% | 7 | 0% | equal |
 
 ### v4-03 (scenario)
@@ -174,8 +193,8 @@ Recipes: `fire3{burn:[electric3]}`
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 331.853121 | 300.353121 | -9.492% | 301.253121 | -9.221% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| damage_capped | 331.853121 | 300.353121 | -9.492% | 301.253121 | -9.221% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| damage | 331.853121 | 296.753121 | -10.577% | 296.753121 | -10.577% | expected structural difference: E1, E3, E2 |
+| damage_capped | 331.853121 | 296.753121 | -10.577% | 296.753121 | -10.577% | expected structural difference: E1, E3, E2 |
 | kills | 0 | 0 | 0% | 0 | 0% | equal |
 | mana | 0 | 0 | 0% | 0 | 0% | equal |
 | mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
@@ -187,22 +206,22 @@ Recipes: `fire3{burn:[electric3]}`
 | max_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_status_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_budget_used | 5 | 5 | 0% | 5 | 0% | equal |
-| applications | 155 | 120 | -22.581% | 121 | -21.935% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| applications | 155 | 116 | -25.161% | 116 | -25.161% | expected structural difference: E1, E3, E2 |
 | rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
 | spread_status | 16 | 16 | 0% | 16 | 0% | equal |
-| status_instances | 4 | 3 | -25.000% | 4 | 0% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| status_instances | 4 | 3 | -25.000% | 4 | 0% | expected structural difference: E1, E3, E2 |
 | pushed_tiles | 0 | 0 | 0% | 0 | 0% | equal |
 | seconds | 14 | 14 | 0% | 14 | 0% | tolerance (floating arithmetic) |
 | host_attacks | 7 | 7 | 0% | 7 | 0% | equal |
 | finite | true | true | 0 | true | 0 | equal |
 | hops.total | 16 | 16 | 0% | 16 | 0% | equal |
-| by_element.fire | 243 | 211.5 | -12.963% | 212.4 | -12.593% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| by_element.fire | 243 | 207.9 | -14.444% | 207.9 | -14.444% | expected structural difference: E1, E3, E2 |
 | by_element.electric | 88.853121 | 88.853121 | 0% | 88.853121 | 0% | tolerance (floating arithmetic) |
 | statuses.burn | 23 | 23 | 0% | 23 | 0% | equal |
 | hops.durum yandakine atlayarak | 16 | 16 | 0% | 16 | 0% | equal |
-| fields.fire_trail | 89 | 13 | -85.393% | 13 | -85.393% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.with_applications | 123 | 88 | -28.455% | 89 | -27.642% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.using_1_applications | 115 | 80 | -30.435% | 81 | -29.565% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| fields.fire_trail | 89 | 13 | -85.393% | 13 | -85.393% | expected structural difference: E1, E3, E2 |
+| roots.with_applications | 123 | 84 | -31.707% | 84 | -31.707% | expected structural difference: E1, E3, E2 |
+| roots.using_1_applications | 115 | 76 | -33.913% | 76 | -33.913% | expected structural difference: E1, E3, E2 |
 | roots.using_5_applications | 8 | 8 | 0% | 8 | 0% | equal |
 
 ### v4-04 (scenario)
@@ -211,8 +230,8 @@ Recipes: `fire3{burn:[electric3{chain:[ice2]}]}`
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 321.965492 | 311.165492 | -3.354% | 315.665492 | -1.957% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| damage_capped | 321.965492 | 311.165492 | -3.354% | 315.665492 | -1.957% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| damage | 321.965492 | 305.765492 | -5.032% | 305.765492 | -5.032% | expected structural difference: E1, E3, E2 |
+| damage_capped | 321.965492 | 305.765492 | -5.032% | 305.765492 | -5.032% | expected structural difference: E1, E3, E2 |
 | kills | 0 | 0 | 0% | 0 | 0% | equal |
 | mana | 0 | 0 | 0% | 0 | 0% | equal |
 | mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
@@ -224,24 +243,24 @@ Recipes: `fire3{burn:[electric3{chain:[ice2]}]}`
 | max_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_status_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_budget_used | 5 | 5 | 0% | 5 | 0% | equal |
-| applications | 130 | 118 | -9.231% | 123 | -5.385% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| applications | 130 | 112 | -13.846% | 112 | -13.846% | expected structural difference: E1, E3, E2 |
 | rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
 | spread_status | 32 | 32 | 0% | 32 | 0% | equal |
-| status_instances | 7 | 6 | -14.286% | 7 | 0% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| status_instances | 7 | 6 | -14.286% | 7 | 0% | expected structural difference: E1, E3, E2 |
 | pushed_tiles | 0 | 0 | 0% | 0 | 0% | equal |
 | seconds | 14 | 14 | 0% | 14 | 0% | tolerance (floating arithmetic) |
 | host_attacks | 7 | 7 | 0% | 7 | 0% | equal |
 | finite | true | true | 0 | true | 0 | equal |
 | hops.total | 16 | 16 | 0% | 16 | 0% | equal |
-| by_element.fire | 220.5 | 209.7 | -4.898% | 214.2 | -2.857% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| by_element.fire | 220.5 | 204.3 | -7.347% | 204.3 | -7.347% | expected structural difference: E1, E3, E2 |
 | by_element.electric | 88.853121 | 88.853121 | 0% | 88.853121 | 0% | tolerance (floating arithmetic) |
 | by_element.ice | 12.612371 | 12.612371 | 0% | 12.612371 | 0% | tolerance (floating arithmetic) |
 | statuses.burn | 23 | 23 | 0% | 23 | 0% | equal |
 | statuses.slow | 16 | 16 | 0% | 16 | 0% | equal |
 | hops.durum yandakine atlayarak | 16 | 16 | 0% | 16 | 0% | equal |
-| fields.fire_trail | 82 | 15 | -81.707% | 14 | -82.927% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.with_applications | 98 | 86 | -12.245% | 91 | -7.143% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.using_1_applications | 90 | 78 | -13.333% | 83 | -7.778% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| fields.fire_trail | 82 | 13 | -84.146% | 13 | -84.146% | expected structural difference: E1, E3, E2 |
+| roots.with_applications | 98 | 80 | -18.367% | 80 | -18.367% | expected structural difference: E1, E3, E2 |
+| roots.using_1_applications | 90 | 72 | -20.000% | 72 | -20.000% | expected structural difference: E1, E3, E2 |
 | roots.using_5_applications | 8 | 8 | 0% | 8 | 0% | equal |
 
 ### v4-05 (scenario)
@@ -250,8 +269,8 @@ Recipes: `fire5{burn:[electric3,poison2,blood1]}`
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 651.186795 | 693.568591 | +6.508% | 680.251326 | +4.463% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| damage_capped | 621.6 | 664.15399 | +6.846% | 663.99649 | +6.821% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| damage | 651.186795 | 683.646091 | +4.985% | 679.846326 | +4.401% | expected structural difference: E1, E3, E2 |
+| damage_capped | 621.6 | 662.35399 | +6.556% | 662.19649 | +6.531% | expected structural difference: E1, E3, E2 |
 | kills | 5 | 5 | 0% | 5 | 0% | equal |
 | mana | 10 | 10 | 0% | 10 | 0% | equal |
 | mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
@@ -263,27 +282,27 @@ Recipes: `fire5{burn:[electric3,poison2,blood1]}`
 | max_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_status_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_budget_used | 5 | 5 | 0% | 5 | 0% | equal |
-| applications | 134 | 137 | +2.239% | 132 | -1.493% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| applications | 134 | 131 | -2.239% | 127 | -5.224% | expected structural difference: E1, E3, E2 |
 | rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
-| spread_status | 58 | 88 | +51.724% | 80 | +37.931% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| status_instances | 11 | 18 | +63.636% | 18 | +63.636% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| spread_status | 58 | 88 | +51.724% | 80 | +37.931% | expected structural difference: E1, E3, E2 |
+| status_instances | 11 | 18 | +63.636% | 18 | +63.636% | expected structural difference: E1, E3, E2 |
 | pushed_tiles | 0 | 0 | 0% | 0 | 0% | equal |
 | seconds | 14 | 14 | 0% | 14 | 0% | tolerance (floating arithmetic) |
 | host_attacks | 7 | 7 | 0% | 7 | 0% | equal |
 | finite | true | true | 0 | true | 0 | equal |
-| hops.total | 6 | 12 | +100.000% | 10 | +66.667% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| by_element.fire | 319.05 | 305.55 | -4.231% | 303.3 | -4.937% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| by_element.electric | 50.684295 | 70.498591 | +39.094% | 66.833826 | +31.863% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| by_element.blood | 96.075 | 109.62 | +14.098% | 109.1475 | +13.607% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| by_element.poison | 185.3775 | 207.9 | +12.150% | 200.97 | +8.411% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| statuses.burn | 11 | 16 | +45.455% | 14 | +27.273% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| statuses.poison | 27 | 40 | +48.148% | 37 | +37.037% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| statuses.bleed | 27 | 40 | +48.148% | 37 | +37.037% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| hops.durum yandakine atlayarak | 6 | 12 | +100.000% | 10 | +66.667% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| fields.fire_trail | 56 | 11 | -80.357% | 10 | -82.143% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.with_applications | 122 | 113 | -7.377% | 112 | -8.197% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.using_1_applications | 119 | 107 | -10.084% | 107 | -10.084% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.using_5_applications | 3 | 6 | +100.000% | 5 | +66.667% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| hops.total | 6 | 12 | +100.000% | 10 | +66.667% | expected structural difference: E1, E3, E2 |
+| by_element.fire | 319.05 | 292.95 | -8.181% | 292.5 | -8.322% | expected structural difference: E1, E3, E2 |
+| by_element.electric | 50.684295 | 72.703591 | +43.444% | 69.038826 | +36.213% | expected structural difference: E1, E3, E2 |
+| by_element.blood | 96.075 | 110.0925 | +14.590% | 110.4075 | +14.918% | expected structural difference: E1, E3, E2 |
+| by_element.poison | 185.3775 | 207.9 | +12.150% | 207.9 | +12.150% | expected structural difference: E1, E3, E2 |
+| statuses.burn | 11 | 16 | +45.455% | 15 | +36.364% | expected structural difference: E1, E3, E2 |
+| statuses.poison | 27 | 40 | +48.148% | 37 | +37.037% | expected structural difference: E1, E3, E2 |
+| statuses.bleed | 27 | 40 | +48.148% | 37 | +37.037% | expected structural difference: E1, E3, E2 |
+| hops.durum yandakine atlayarak | 6 | 12 | +100.000% | 10 | +66.667% | expected structural difference: E1, E3, E2 |
+| fields.fire_trail | 56 | 9 | -83.929% | 9 | -83.929% | expected structural difference: E1, E3, E2 |
+| roots.with_applications | 122 | 107 | -12.295% | 107 | -12.295% | expected structural difference: E1, E3, E2 |
+| roots.using_1_applications | 119 | 101 | -15.126% | 102 | -14.286% | expected structural difference: E1, E3, E2 |
+| roots.using_5_applications | 3 | 6 | +100.000% | 5 | +66.667% | expected structural difference: E1, E3, E2 |
 
 ### v4-06 (scenario)
 
@@ -365,8 +384,8 @@ Recipes: `blood1{bleed:[water3]}`
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 110.889 | 111.114 | +0.203% | 110.889 | 0% | BUG exposure / structural mixture: E1, E3, B1 exposure; tolerance (floating arithmetic) |
-| damage_capped | 110.889 | 111.114 | +0.203% | 110.889 | 0% | BUG exposure / structural mixture: E1, E3, B1 exposure; tolerance (floating arithmetic) |
+| damage | 110.889 | 111.114 | +0.203% | 110.889 | 0% | expected structural difference: E1, E3; tolerance (floating arithmetic) |
+| damage_capped | 110.889 | 111.114 | +0.203% | 110.889 | 0% | expected structural difference: E1, E3; tolerance (floating arithmetic) |
 | kills | 0 | 0 | 0% | 0 | 0% | equal |
 | mana | 0 | 0 | 0% | 0 | 0% | equal |
 | mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
@@ -387,7 +406,7 @@ Recipes: `blood1{bleed:[water3]}`
 | host_attacks | 7 | 7 | 0% | 7 | 0% | equal |
 | finite | true | true | 0 | true | 0 | equal |
 | hops.total | 0 | 0 | 0% | 0 | 0% | equal |
-| by_element.blood | 65.025 | 65.25 | +0.346% | 65.025 | 0% | BUG exposure / structural mixture: E1, E3, B1 exposure; tolerance (floating arithmetic) |
+| by_element.blood | 65.025 | 65.25 | +0.346% | 65.025 | 0% | expected structural difference: E1, E3; tolerance (floating arithmetic) |
 | by_element.water | 45.864 | 45.864 | 0% | 45.864 | 0% | tolerance (floating arithmetic) |
 | statuses.bleed | 7 | 7 | 0% | 7 | 0% | equal |
 | statuses.wet | 14 | 14 | 0% | 14 | 0% | equal |
@@ -400,8 +419,8 @@ Recipes: `fire3`, `water4{water_hit:[blood1]}`
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 278.89875 | 301.96125 | +8.269% | 265.66875 | -4.744% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| damage_capped | 258 | 300.40125 | +16.435% | 249.9 | -3.140% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| damage | 278.89875 | 298.20375 | +6.922% | 262.96875 | -5.712% | expected structural difference: E1, E3, E2 |
+| damage_capped | 258 | 296.80125 | +15.039% | 248.1 | -3.837% | expected structural difference: E1, E3, E2 |
 | kills | 2 | 2 | 0% | 2 | 0% | equal |
 | mana | 4 | 4 | 0% | 4 | 0% | equal |
 | mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
@@ -413,24 +432,24 @@ Recipes: `fire3`, `water4{water_hit:[blood1]}`
 | max_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_status_gen | 0 | 0 | 0% | 0 | 0% | equal |
 | max_budget_used | 1 | 1 | 0% | 1 | 0% | equal |
-| applications | 43 | 50 | +16.279% | 40 | -6.977% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| applications | 43 | 46 | +6.977% | 37 | -13.953% | expected structural difference: E1, E3, E2 |
 | rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
 | spread_status | 0 | 0 | 0% | 0 | 0% | equal |
-| status_instances | 4 | 9 | +125.000% | 5 | +25.000% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| pushed_tiles | 3.825 | 4.725 | +23.529% | 3.825 | 0% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| status_instances | 4 | 9 | +125.000% | 5 | +25.000% | expected structural difference: E1, E3, E2 |
+| pushed_tiles | 3.825 | 4.725 | +23.529% | 3.825 | 0% | expected structural difference: E1, E3, E2 |
 | seconds | 14 | 14 | 0% | 14 | 0% | tolerance (floating arithmetic) |
 | host_attacks | 14 | 14 | 0% | 14 | 0% | equal |
 | finite | true | true | 0 | true | 0 | equal |
 | hops.total | 0 | 0 | 0% | 0 | 0% | equal |
-| by_element.fire | 112.5 | 126.9 | +12.800% | 99.9 | -11.200% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| by_element.fire | 112.5 | 123.3 | +9.600% | 97.2 | -13.600% | expected structural difference: E1, E3, E2 |
 | by_element.water | 126 | 126 | 0% | 126 | 0% | equal |
-| by_element.blood | 40.39875 | 49.06125 | +21.442% | 39.76875 | -1.559% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| statuses.burn | 6 | 7 | +16.667% | 6 | 0% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| statuses.wet | 6 | 7 | +16.667% | 6 | 0% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| statuses.bleed | 6 | 7 | +16.667% | 6 | 0% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| fields.fire_trail | 20 | 12 | -40.000% | 7 | -65.000% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.with_applications | 43 | 50 | +16.279% | 40 | -6.977% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.using_1_applications | 43 | 50 | +16.279% | 40 | -6.977% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| by_element.blood | 40.39875 | 48.90375 | +21.053% | 39.76875 | -1.559% | expected structural difference: E1, E3, E2 |
+| statuses.burn | 6 | 7 | +16.667% | 6 | 0% | expected structural difference: E1, E3, E2 |
+| statuses.wet | 6 | 7 | +16.667% | 6 | 0% | expected structural difference: E1, E3, E2 |
+| statuses.bleed | 6 | 7 | +16.667% | 6 | 0% | expected structural difference: E1, E3, E2 |
+| fields.fire_trail | 20 | 11 | -45.000% | 7 | -65.000% | expected structural difference: E1, E3, E2 |
+| roots.with_applications | 43 | 46 | +6.977% | 37 | -13.953% | expected structural difference: E1, E3, E2 |
+| roots.using_1_applications | 43 | 46 | +6.977% | 37 | -13.953% | expected structural difference: E1, E3, E2 |
 
 ### v4-09-alone (comparison)
 
@@ -579,41 +598,41 @@ Recipes: `volcano3{lava_blob:[electric3{chain:[fire3{burn:[ice2]}]}]}`
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 468.820403 | 445.456614 | -4.984% | 480.811449 | +2.558% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| damage_capped | 468.813379 | 445.456614 | -4.982% | 480.811449 | +2.559% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| kills | 1 | 0 | -100.000% | 0 | -100.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| mana | 2 | 0 | -100.000% | 0 | -100.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| damage | 468.820403 | 444.574614 | -5.172% | 478.165449 | +1.993% | expected structural difference: E1, E3, E2, E4 |
+| damage_capped | 468.813379 | 444.574614 | -5.170% | 478.165449 | +1.995% | expected structural difference: E1, E3, E2, E4 |
+| kills | 1 | 0 | -100.000% | 0 | -100.000% | expected structural difference: E1, E3, E2, E4 |
+| mana | 2 | 0 | -100.000% | 0 | -100.000% | expected structural difference: E1, E3, E2, E4 |
 | mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
 | mana_mark | 0 | 0 | 0% | 0 | 0% | equal |
-| stones | 1 | 0 | -100.000% | 0 | -100.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| stones | 1 | 0 | -100.000% | 0 | -100.000% | expected structural difference: E1, E3, E2, E4 |
 | frozen | 0 | 0 | 0% | 0 | 0% | equal |
 | nova_frozen | 0 | 0 | 0% | 0 | 0% | equal |
 | shards | 0 | 0 | 0% | 0 | 0% | equal |
 | max_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_status_gen | 2 | 2 | 0% | 2 | 0% | equal |
-| max_budget_used | 8 | 6 | -25.000% | 8 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| applications | 124 | 105 | -15.323% | 121 | -2.419% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| max_budget_used | 8 | 6 | -25.000% | 8 | 0% | expected structural difference: E1, E3, E2, E4 |
+| applications | 124 | 103 | -16.935% | 115 | -7.258% | expected structural difference: E1, E3, E2, E4 |
 | rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
-| spread_status | 41 | 40 | -2.439% | 47 | +14.634% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| status_instances | 5 | 6 | +20.000% | 6 | +20.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| spread_status | 41 | 40 | -2.439% | 47 | +14.634% | expected structural difference: E1, E3, E2, E4 |
+| status_instances | 5 | 6 | +20.000% | 6 | +20.000% | expected structural difference: E1, E3, E2, E4 |
 | pushed_tiles | 0 | 0 | 0% | 0 | 0% | equal |
 | seconds | 14 | 14 | 0% | 14 | 0% | tolerance (floating arithmetic) |
 | host_attacks | 8 | 8 | 0% | 8 | 0% | equal |
 | finite | true | true | 0 | true | 0 | equal |
-| hops.total | 15 | 16 | +6.667% | 16 | +6.667% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.lava | 283.365922 | 275.23134 | -2.871% | 287.65134 | +1.512% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.electric | 86.241802 | 83.76606 | -2.871% | 87.54606 | +1.512% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.fire | 73.930148 | 63.121494 | -14.620% | 75.469494 | +2.082% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.ice | 25.28253 | 23.33772 | -7.692% | 30.144555 | +19.231% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| statuses.burn | 15 | 16 | +6.667% | 16 | +6.667% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| statuses.slow | 26 | 24 | -7.692% | 31 | +19.231% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| hops.lav topu düşmandan düşmana zıplayarak | 15 | 16 | +6.667% | 16 | +6.667% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| fields.fire_trail | 61 | 10 | -83.607% | 16 | -73.770% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.with_applications | 84 | 65 | -22.619% | 79 | -5.952% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_1_applications | 76 | 57 | -25.000% | 71 | -6.579% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_4_applications | 1 | 0 | -100.000% | 0 | -100.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_6_applications | 6 | 8 | +33.333% | 7 | +16.667% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_8_applications | 1 | 0 | -100.000% | 1 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| hops.total | 15 | 16 | +6.667% | 16 | +6.667% | expected structural difference: E1, E3, E2, E4 |
+| by_element.lava | 283.365922 | 275.23134 | -2.871% | 287.65134 | +1.512% | expected structural difference: E1, E3, E2, E4 |
+| by_element.electric | 86.241802 | 83.76606 | -2.871% | 87.54606 | +1.512% | expected structural difference: E1, E3, E2, E4 |
+| by_element.fire | 73.930148 | 62.239494 | -15.813% | 72.823494 | -1.497% | expected structural difference: E1, E3, E2, E4 |
+| by_element.ice | 25.28253 | 23.33772 | -7.692% | 30.144555 | +19.231% | expected structural difference: E1, E3, E2, E4 |
+| statuses.burn | 15 | 16 | +6.667% | 16 | +6.667% | expected structural difference: E1, E3, E2, E4 |
+| statuses.slow | 26 | 24 | -7.692% | 31 | +19.231% | expected structural difference: E1, E3, E2, E4 |
+| hops.lav topu düşmandan düşmana zıplayarak | 15 | 16 | +6.667% | 16 | +6.667% | expected structural difference: E1, E3, E2, E4 |
+| fields.fire_trail | 61 | 8 | -86.885% | 13 | -78.689% | expected structural difference: E1, E3, E2, E4 |
+| roots.with_applications | 84 | 63 | -25.000% | 73 | -13.095% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_1_applications | 76 | 55 | -27.632% | 65 | -14.474% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_4_applications | 1 | 0 | -100.000% | 0 | -100.000% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_6_applications | 6 | 8 | +33.333% | 7 | +16.667% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_8_applications | 1 | 0 | -100.000% | 1 | 0% | expected structural difference: E1, E3, E2, E4 |
 
 ### v4-13 (scenario)
 
@@ -694,8 +713,8 @@ Recipes: `golem3{golem_punch:[fire3]}`
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 234.36 | 184.32 | -21.352% | 223.02 | -4.839% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| damage_capped | 234.03 | 182.1 | -22.189% | 220.8 | -5.653% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| damage | 234.36 | 181.8 | -22.427% | 221.13 | -5.645% | expected structural difference: E1, E3, E2, E4 |
+| damage_capped | 234.03 | 179.58 | -23.266% | 219.54 | -6.192% | expected structural difference: E1, E3, E2, E4 |
 | kills | 1 | 1 | 0% | 1 | 0% | equal |
 | mana | 2 | 2 | 0% | 2 | 0% | equal |
 | mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
@@ -707,21 +726,21 @@ Recipes: `golem3{golem_punch:[fire3]}`
 | max_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_status_gen | 0 | 0 | 0% | 0 | 0% | equal |
 | max_budget_used | 1 | 1 | 0% | 1 | 0% | equal |
-| applications | 49 | 30 | -38.776% | 34 | -30.612% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| applications | 49 | 26 | -46.939% | 31 | -36.735% | expected structural difference: E1, E3, E2, E4 |
 | rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
 | spread_status | 0 | 0 | 0% | 0 | 0% | equal |
 | status_instances | 2 | 2 | 0% | 2 | 0% | equal |
 | pushed_tiles | 0 | 0 | 0% | 0 | 0% | equal |
 | seconds | 14 | 14 | 0% | 14 | 0% | tolerance (floating arithmetic) |
-| host_attacks | 14 | 12 | -14.286% | 14 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| host_attacks | 14 | 12 | -14.286% | 14 | 0% | expected structural difference: E1, E3, E2, E4 |
 | finite | true | true | 0 | true | 0 | equal |
 | hops.total | 0 | 0 | 0% | 0 | 0% | equal |
-| by_element.physical | 138.6 | 118.8 | -14.286% | 138.6 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure; tolerance (floating arithmetic) |
-| by_element.fire | 95.76 | 65.52 | -31.579% | 84.42 | -11.842% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| statuses.burn | 8 | 5 | -37.500% | 7 | -12.500% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| fields.fire_trail | 27 | 9 | -66.667% | 11 | -59.259% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.with_applications | 49 | 30 | -38.776% | 34 | -30.612% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_1_applications | 49 | 30 | -38.776% | 34 | -30.612% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| by_element.physical | 138.6 | 118.8 | -14.286% | 138.6 | 0% | expected structural difference: E1, E3, E2, E4; tolerance (floating arithmetic) |
+| by_element.fire | 95.76 | 63 | -34.211% | 82.53 | -13.816% | expected structural difference: E1, E3, E2, E4 |
+| statuses.burn | 8 | 5 | -37.500% | 7 | -12.500% | expected structural difference: E1, E3, E2, E4 |
+| fields.fire_trail | 27 | 7 | -74.074% | 9 | -66.667% | expected structural difference: E1, E3, E2, E4 |
+| roots.with_applications | 49 | 26 | -46.939% | 31 | -36.735% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_1_applications | 49 | 26 | -46.939% | 31 | -36.735% | expected structural difference: E1, E3, E2, E4 |
 
 ### v4-16 (scenario)
 
@@ -905,35 +924,35 @@ Recipes: `fire5{fire_trail:[poison1]}`
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 399.6 | 316.35 | -20.833% | 307.35 | -23.086% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| damage_capped | 399.6 | 309 | -22.673% | 300 | -24.925% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| kills | 0 | 1 | new (ref=0) | 1 | new (ref=0) | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| mana | 0 | 2 | new (ref=0) | 2 | new (ref=0) | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| damage | 399.6 | 288.45 | -27.815% | 284.4 | -28.829% | expected structural difference: E1, E3, E2 |
+| damage_capped | 399.6 | 286.05 | -28.416% | 282 | -29.429% | expected structural difference: E1, E3, E2 |
+| kills | 0 | 1 | new (ref=0) | 1 | new (ref=0) | expected structural difference: E1, E3, E2 |
+| mana | 0 | 2 | new (ref=0) | 2 | new (ref=0) | expected structural difference: E1, E3, E2 |
 | mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
 | mana_mark | 0 | 0 | 0% | 0 | 0% | equal |
-| stones | 0 | 1 | new (ref=0) | 1 | new (ref=0) | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| stones | 0 | 1 | new (ref=0) | 1 | new (ref=0) | expected structural difference: E1, E3, E2 |
 | frozen | 0 | 0 | 0% | 0 | 0% | equal |
 | nova_frozen | 0 | 0 | 0% | 0 | 0% | equal |
 | shards | 0 | 0 | 0% | 0 | 0% | equal |
 | max_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_status_gen | 0 | 0 | 0% | 0 | 0% | equal |
 | max_budget_used | 1 | 1 | 0% | 1 | 0% | equal |
-| applications | 129 | 85 | -34.109% | 82 | -36.434% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| applications | 129 | 74 | -42.636% | 73 | -43.411% | expected structural difference: E1, E3, E2 |
 | rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
 | spread_status | 0 | 0 | 0% | 0 | 0% | equal |
-| status_instances | 6 | 9 | +50.000% | 9 | +50.000% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| status_instances | 6 | 9 | +50.000% | 9 | +50.000% | expected structural difference: E1, E3, E2 |
 | pushed_tiles | 0 | 0 | 0% | 0 | 0% | equal |
 | seconds | 14 | 14 | 0% | 14 | 0% | tolerance (floating arithmetic) |
 | host_attacks | 7 | 7 | 0% | 7 | 0% | equal |
 | finite | true | true | 0 | true | 0 | equal |
 | hops.total | 0 | 0 | 0% | 0 | 0% | equal |
-| by_element.fire | 308.25 | 218.7 | -29.051% | 212.85 | -30.949% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| by_element.poison | 91.35 | 97.65 | +6.897% | 94.5 | +3.448% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| statuses.burn | 7 | 6 | -14.286% | 6 | -14.286% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| statuses.poison | 78 | 35 | -55.128% | 34 | -56.410% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| fields.fire_trail | 44 | 11 | -75.000% | 12 | -72.727% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.with_applications | 129 | 85 | -34.109% | 82 | -36.434% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.using_1_applications | 129 | 85 | -34.109% | 82 | -36.434% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| by_element.fire | 308.25 | 209.7 | -31.971% | 205.65 | -33.285% | expected structural difference: E1, E3, E2 |
+| by_element.poison | 91.35 | 78.75 | -13.793% | 78.75 | -13.793% | expected structural difference: E1, E3, E2 |
+| statuses.burn | 7 | 6 | -14.286% | 6 | -14.286% | expected structural difference: E1, E3, E2 |
+| statuses.poison | 78 | 30 | -61.538% | 30 | -61.538% | expected structural difference: E1, E3, E2 |
+| fields.fire_trail | 44 | 10 | -77.273% | 10 | -77.273% | expected structural difference: E1, E3, E2 |
+| roots.with_applications | 129 | 74 | -42.636% | 73 | -43.411% | expected structural difference: E1, E3, E2 |
+| roots.using_1_applications | 129 | 74 | -42.636% | 73 | -43.411% | expected structural difference: E1, E3, E2 |
 
 ### v4-22 (scenario)
 
@@ -941,44 +960,44 @@ Recipes: `volcano5{lava_blob:[fire3,electric3,ice2]}`
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 760.740282 | 742.832554 | -2.354% | 784.020058 | +3.060% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| damage_capped | 701.506426 | 720 | +2.636% | 707.806426 | +0.898% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| kills | 5 | 6 | +20.000% | 5 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| mana | 10 | 12 | +20.000% | 10 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| damage | 760.740282 | 740.312554 | -2.685% | 782.130058 | +2.812% | expected structural difference: E1, E3, E2, E4 |
+| damage_capped | 701.506426 | 720 | +2.636% | 707.806426 | +0.898% | expected structural difference: E1, E3, E2, E4 |
+| kills | 5 | 6 | +20.000% | 5 | 0% | expected structural difference: E1, E3, E2, E4 |
+| mana | 10 | 12 | +20.000% | 10 | 0% | expected structural difference: E1, E3, E2, E4 |
 | mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
 | mana_mark | 0 | 0 | 0% | 0 | 0% | equal |
-| stones | 5 | 6 | +20.000% | 5 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| stones | 5 | 6 | +20.000% | 5 | 0% | expected structural difference: E1, E3, E2, E4 |
 | frozen | 0 | 0 | 0% | 0 | 0% | equal |
 | nova_frozen | 0 | 0 | 0% | 0 | 0% | equal |
 | shards | 0 | 0 | 0% | 0 | 0% | equal |
 | max_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_status_gen | 1 | 1 | 0% | 1 | 0% | equal |
 | max_budget_used | 7 | 7 | 0% | 7 | 0% | equal |
-| applications | 90 | 80 | -11.111% | 93 | +3.333% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| applications | 90 | 79 | -12.222% | 90 | 0% | expected structural difference: E1, E3, E2, E4 |
 | rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
-| spread_status | 26 | 24 | -7.692% | 30 | +15.385% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| status_instances | 10 | 10 | 0% | 10 | 0% | equal |
+| spread_status | 26 | 24 | -7.692% | 30 | +15.385% | expected structural difference: E1, E3, E2, E4 |
+| status_instances | 10 | 11 | +10.000% | 10 | 0% | expected structural difference: E1, E3, E2, E4 |
 | pushed_tiles | 0 | 0 | 0% | 0 | 0% | equal |
-| seconds | 14 | 10.9 | -22.143% | 14 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure; tolerance (floating arithmetic) |
-| host_attacks | 8 | 7 | -12.500% | 8 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| seconds | 14 | 10.25 | -26.786% | 14 | 0% | expected structural difference: E1, E3, E2, E4; tolerance (floating arithmetic) |
+| host_attacks | 8 | 7 | -12.500% | 8 | 0% | expected structural difference: E1, E3, E2, E4 |
 | finite | true | true | 0 | true | 0 | equal |
-| hops.total | 15 | 13 | -13.333% | 16 | +6.667% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.lava | 502.540043 | 484.162965 | -3.657% | 522.40662 | +3.953% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.fire | 126.205254 | 123.861654 | -1.857% | 127.140363 | +0.741% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.ice | 62.523941 | 63.856391 | +2.131% | 63.697772 | +1.877% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.electric | 69.471045 | 70.951545 | +2.131% | 70.775302 | +1.877% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| statuses.burn | 19 | 19 | 0% | 21 | +10.526% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| statuses.slow | 19 | 19 | 0% | 21 | +10.526% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| hops.lav topu düşmandan düşmana zıplayarak | 15 | 13 | -13.333% | 16 | +6.667% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| fields.lava_pool | 6 | 4 | -33.333% | 5 | -16.667% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| fields.fire_trail | 36 | 6 | -83.333% | 10 | -72.222% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.with_applications | 55 | 46 | -16.364% | 55 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_1_applications | 47 | 39 | -17.021% | 47 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_2_applications | 1 | 0 | -100.000% | 0 | -100.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_5_applications | 2 | 1 | -50.000% | 1 | -50.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_6_applications | 4 | 3 | -25.000% | 5 | +25.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_7_applications | 1 | 2 | +100.000% | 1 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_4_applications | 0 | 1 | new (ref=0) | 1 | new (ref=0) | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| hops.total | 15 | 13 | -13.333% | 16 | +6.667% | expected structural difference: E1, E3, E2, E4 |
+| by_element.lava | 502.540043 | 484.162965 | -3.657% | 522.40662 | +3.953% | expected structural difference: E1, E3, E2, E4 |
+| by_element.fire | 126.205254 | 121.341654 | -3.854% | 125.250363 | -0.757% | expected structural difference: E1, E3, E2, E4 |
+| by_element.ice | 62.523941 | 63.856391 | +2.131% | 63.697772 | +1.877% | expected structural difference: E1, E3, E2, E4 |
+| by_element.electric | 69.471045 | 70.951545 | +2.131% | 70.775302 | +1.877% | expected structural difference: E1, E3, E2, E4 |
+| statuses.burn | 19 | 19 | 0% | 21 | +10.526% | expected structural difference: E1, E3, E2, E4 |
+| statuses.slow | 19 | 19 | 0% | 21 | +10.526% | expected structural difference: E1, E3, E2, E4 |
+| hops.lav topu düşmandan düşmana zıplayarak | 15 | 13 | -13.333% | 16 | +6.667% | expected structural difference: E1, E3, E2, E4 |
+| fields.lava_pool | 6 | 4 | -33.333% | 5 | -16.667% | expected structural difference: E1, E3, E2, E4 |
+| fields.fire_trail | 36 | 5 | -86.111% | 8 | -77.778% | expected structural difference: E1, E3, E2, E4 |
+| roots.with_applications | 55 | 45 | -18.182% | 52 | -5.455% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_1_applications | 47 | 38 | -19.149% | 44 | -6.383% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_2_applications | 1 | 0 | -100.000% | 0 | -100.000% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_5_applications | 2 | 1 | -50.000% | 1 | -50.000% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_6_applications | 4 | 3 | -25.000% | 5 | +25.000% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_7_applications | 1 | 2 | +100.000% | 1 | 0% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_4_applications | 0 | 1 | new (ref=0) | 1 | new (ref=0) | expected structural difference: E1, E3, E2, E4 |
 
 ### v4-23 (scenario)
 
@@ -1054,8 +1073,8 @@ Recipes: `fire3{fire_trail:[ice2]}`
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 129.672 | 160.884 | +24.070% | 184.59 | +42.351% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| damage_capped | 129.672 | 160.884 | +24.070% | 184.59 | +42.351% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| damage | 129.672 | 166.986 | +28.776% | 170.352 | +31.371% | expected structural difference: E1, E3, E2 |
+| damage_capped | 129.672 | 166.986 | +28.776% | 170.352 | +31.371% | expected structural difference: E1, E3, E2 |
 | kills | 0 | 0 | 0% | 0 | 0% | equal |
 | mana | 0 | 0 | 0% | 0 | 0% | equal |
 | mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
@@ -1067,22 +1086,22 @@ Recipes: `fire3{fire_trail:[ice2]}`
 | max_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_status_gen | 0 | 0 | 0% | 0 | 0% | equal |
 | max_budget_used | 1 | 1 | 0% | 1 | 0% | equal |
-| applications | 29 | 45 | +55.172% | 56 | +93.103% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| applications | 29 | 48 | +65.517% | 49 | +68.966% | expected structural difference: E1, E3, E2 |
 | rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
 | spread_status | 0 | 0 | 0% | 0 | 0% | equal |
-| status_instances | 2 | 5 | +150.000% | 7 | +250.000% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| status_instances | 2 | 7 | +250.000% | 7 | +250.000% | expected structural difference: E1, E3, E2 |
 | pushed_tiles | 0 | 0 | 0% | 0 | 0% | equal |
 | seconds | 14 | 14 | 0% | 14 | 0% | tolerance (floating arithmetic) |
 | host_attacks | 7 | 7 | 0% | 7 | 0% | equal |
 | finite | true | true | 0 | true | 0 | equal |
 | hops.total | 0 | 0 | 0% | 0 | 0% | equal |
-| by_element.fire | 120.6 | 131.4 | +8.955% | 144.9 | +20.149% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| by_element.ice | 9.072 | 29.484 | +225.000% | 39.69 | +337.500% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| by_element.fire | 120.6 | 134.1 | +11.194% | 138.6 | +14.925% | expected structural difference: E1, E3, E2 |
+| by_element.ice | 9.072 | 32.886 | +262.500% | 31.752 | +250.000% | expected structural difference: E1, E3, E2 |
 | statuses.burn | 7 | 7 | 0% | 7 | 0% | equal |
-| statuses.slow | 8 | 26 | +225.000% | 35 | +337.500% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| fields.fire_trail | 38 | 10 | -73.684% | 11 | -71.053% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.with_applications | 29 | 45 | +55.172% | 56 | +93.103% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.using_1_applications | 29 | 45 | +55.172% | 56 | +93.103% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| statuses.slow | 8 | 29 | +262.500% | 28 | +250.000% | expected structural difference: E1, E3, E2 |
+| fields.fire_trail | 38 | 8 | -78.947% | 8 | -78.947% | expected structural difference: E1, E3, E2 |
+| roots.with_applications | 29 | 48 | +65.517% | 49 | +68.966% | expected structural difference: E1, E3, E2 |
+| roots.using_1_applications | 29 | 48 | +65.517% | 49 | +68.966% | expected structural difference: E1, E3, E2 |
 
 ### user-lava-hop (scenario)
 
@@ -1124,11 +1143,11 @@ Recipes: `fire3{burn:[mana1]}`
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 160.5915 | 147.9915 | -7.846% | 146.1915 | -8.967% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| damage_capped | 160.5915 | 147.9915 | -7.846% | 146.1915 | -8.967% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| damage | 160.5915 | 144.3915 | -10.088% | 144.3915 | -10.088% | expected structural difference: E1, E3, E2 |
+| damage_capped | 160.5915 | 144.3915 | -10.088% | 144.3915 | -10.088% | expected structural difference: E1, E3, E2 |
 | kills | 0 | 0 | 0% | 0 | 0% | equal |
-| mana | 21.71043 | 21.71043 | 0% | 21.71043 | 0% | tolerance (floating arithmetic) |
-| mana_siphon | 21.71043 | 21.71043 | 0% | 21.71043 | 0% | tolerance (floating arithmetic) |
+| mana | 20.357078 | 20.357077 | 0% | 20.357077 | 0% | tolerance (floating arithmetic) |
+| mana_siphon | 20.357078 | 20.357077 | 0% | 20.357077 | 0% | tolerance (floating arithmetic) |
 | mana_mark | 0 | 0 | 0% | 0 | 0% | equal |
 | stones | 0 | 0 | 0% | 0 | 0% | equal |
 | frozen | 0 | 0 | 0% | 0 | 0% | equal |
@@ -1137,7 +1156,7 @@ Recipes: `fire3{burn:[mana1]}`
 | max_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_status_gen | 0 | 0 | 0% | 0 | 0% | equal |
 | max_budget_used | 1 | 1 | 0% | 1 | 0% | equal |
-| applications | 58 | 44 | -24.138% | 42 | -27.586% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| applications | 58 | 40 | -31.034% | 40 | -31.034% | expected structural difference: E1, E3, E2 |
 | rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
 | spread_status | 0 | 0 | 0% | 0 | 0% | equal |
 | status_instances | 1 | 1 | 0% | 1 | 0% | equal |
@@ -1146,12 +1165,12 @@ Recipes: `fire3{burn:[mana1]}`
 | host_attacks | 7 | 7 | 0% | 7 | 0% | equal |
 | finite | true | true | 0 | true | 0 | equal |
 | hops.total | 0 | 0 | 0% | 0 | 0% | equal |
-| by_element.fire | 146.7 | 134.1 | -8.589% | 132.3 | -9.816% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| by_element.fire | 146.7 | 130.5 | -11.043% | 130.5 | -11.043% | expected structural difference: E1, E3, E2 |
 | by_element.arcane | 13.8915 | 13.8915 | 0% | 13.8915 | 0% | tolerance (floating arithmetic) |
 | statuses.burn | 7 | 7 | 0% | 7 | 0% | equal |
-| fields.fire_trail | 38 | 15 | -60.526% | 14 | -63.158% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.with_applications | 58 | 44 | -24.138% | 42 | -27.586% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.using_1_applications | 58 | 44 | -24.138% | 42 | -27.586% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| fields.fire_trail | 38 | 12 | -68.421% | 12 | -68.421% | expected structural difference: E1, E3, E2 |
+| roots.with_applications | 58 | 40 | -31.034% | 40 | -31.034% | expected structural difference: E1, E3, E2 |
+| roots.using_1_applications | 58 | 40 | -31.034% | 40 | -31.034% | expected structural difference: E1, E3, E2 |
 
 ### mana-mark (scenario)
 
@@ -1162,9 +1181,9 @@ Recipes: `mana3`, `stone3`
 | damage | 246.3 | 246.3 | 0% | 246.3 | 0% | equal |
 | damage_capped | 231.5 | 231.5 | 0% | 231.5 | 0% | equal |
 | kills | 1 | 1 | 0% | 1 | 0% | equal |
-| mana | 97.98 | 97.98 | 0% | 97.98 | 0% | equal |
-| mana_siphon | 58.5 | 58.5 | 0% | 58.5 | 0% | equal |
-| mana_mark | 37.48 | 37.48 | 0% | 37.48 | 0% | equal |
+| mana | 84.745 | 84.745 | 0% | 84.745 | 0% | equal |
+| mana_siphon | 50.625 | 50.625 | 0% | 50.625 | 0% | equal |
+| mana_mark | 32.12 | 32.12 | 0% | 32.12 | 0% | equal |
 | stones | 1 | 1 | 0% | 1 | 0% | equal |
 | frozen | 0 | 0 | 0% | 0 | 0% | equal |
 | nova_frozen | 0 | 0 | 0% | 0 | 0% | equal |
@@ -1232,12 +1251,12 @@ Recipes: `mana5`, `fire5`, `stone5`
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 742.2 | 715.9 | -3.544% | 713.4 | -3.880% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| damage_capped | 666.4 | 650.7 | -2.356% | 644.4 | -3.301% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| damage | 742.2 | 699.1 | -5.807% | 690.6 | -6.952% | expected structural difference: E1, E3, E2 |
+| damage_capped | 666.4 | 641.5 | -3.736% | 633 | -5.012% | expected structural difference: E1, E3, E2 |
 | kills | 4 | 4 | 0% | 4 | 0% | equal |
-| mana | 306.81 | 303.54 | -1.066% | 301.05 | -1.877% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| mana_siphon | 173.8 | 173.8 | 0% | 173.8 | 0% | equal |
-| mana_mark | 125.01 | 121.74 | -2.616% | 119.25 | -4.608% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| mana | 209.1375 | 207.03 | -1.008% | 206.4675 | -1.277% | expected structural difference: E1, E3, E2 |
+| mana_siphon | 109.45 | 109.45 | 0% | 109.45 | 0% | tolerance (floating arithmetic) |
+| mana_mark | 91.6875 | 89.58 | -2.299% | 89.0175 | -2.912% | expected structural difference: E1, E3, E2 |
 | stones | 12 | 12 | 0% | 12 | 0% | equal |
 | frozen | 0 | 0 | 0% | 0 | 0% | equal |
 | nova_frozen | 0 | 0 | 0% | 0 | 0% | equal |
@@ -1245,7 +1264,7 @@ Recipes: `mana5`, `fire5`, `stone5`
 | max_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_status_gen | 1 | 1 | 0% | 1 | 0% | equal |
 | max_budget_used | 7 | 7 | 0% | 7 | 0% | equal |
-| applications | 99 | 84 | -15.152% | 84 | -15.152% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| applications | 99 | 75 | -24.242% | 72 | -27.273% | expected structural difference: E1, E3, E2 |
 | rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
 | spread_status | 22 | 22 | 0% | 22 | 0% | equal |
 | status_instances | 17 | 17 | 0% | 17 | 0% | equal |
@@ -1255,16 +1274,16 @@ Recipes: `mana5`, `fire5`, `stone5`
 | finite | true | true | 0 | true | 0 | equal |
 | hops.total | 11 | 11 | 0% | 11 | 0% | equal |
 | by_element.arcane | 173.8 | 173.8 | 0% | 173.8 | 0% | equal |
-| by_element.fire | 263.9 | 237.6 | -9.966% | 235.1 | -10.913% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| by_element.fire | 263.9 | 220.8 | -16.332% | 212.3 | -19.553% | expected structural difference: E1, E3, E2 |
 | by_element.physical | 304.5 | 304.5 | 0% | 304.5 | 0% | equal |
 | statuses.mana_mark | 8 | 8 | 0% | 8 | 0% | equal |
 | statuses.burn | 8 | 8 | 0% | 8 | 0% | equal |
 | statuses.shred | 12 | 12 | 0% | 12 | 0% | equal |
 | statuses.stun | 12 | 12 | 0% | 12 | 0% | equal |
 | hops.parça | 11 | 11 | 0% | 11 | 0% | equal |
-| fields.fire_trail | 22 | 8 | -63.636% | 9 | -59.091% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.with_applications | 77 | 62 | -19.481% | 62 | -19.481% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.using_1_applications | 72 | 57 | -20.833% | 57 | -20.833% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| fields.fire_trail | 22 | 8 | -63.636% | 7 | -68.182% | expected structural difference: E1, E3, E2 |
+| roots.with_applications | 77 | 53 | -31.169% | 50 | -35.065% | expected structural difference: E1, E3, E2 |
+| roots.using_1_applications | 72 | 48 | -33.333% | 45 | -37.500% | expected structural difference: E1, E3, E2 |
 | roots.using_3_applications | 1 | 1 | 0% | 1 | 0% | equal |
 | roots.using_5_applications | 2 | 2 | 0% | 2 | 0% | equal |
 | roots.using_7_applications | 2 | 2 | 0% | 2 | 0% | equal |
@@ -1370,8 +1389,8 @@ Recipes: `fire3{burn:[volcano3]}`
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 217.701 | 194.6295 | -10.598% | 192.8295 | -11.425% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| damage_capped | 213.7575 | 191.2575 | -10.526% | 189.4575 | -11.368% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| damage | 217.701 | 190.1295 | -12.665% | 191.0295 | -12.251% | expected structural difference: E1, E3, E2, E4 |
+| damage_capped | 213.7575 | 187.6575 | -12.210% | 188.5575 | -11.789% | expected structural difference: E1, E3, E2, E4 |
 | kills | 1 | 1 | 0% | 1 | 0% | equal |
 | mana | 2 | 2 | 0% | 2 | 0% | equal |
 | mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
@@ -1383,7 +1402,7 @@ Recipes: `fire3{burn:[volcano3]}`
 | max_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_status_gen | 0 | 0 | 0% | 0 | 0% | equal |
 | max_budget_used | 1 | 1 | 0% | 1 | 0% | equal |
-| applications | 58 | 40 | -31.034% | 38 | -34.483% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| applications | 58 | 35 | -39.655% | 36 | -37.931% | expected structural difference: E1, E3, E2, E4 |
 | rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
 | spread_status | 0 | 0 | 0% | 0 | 0% | equal |
 | status_instances | 2 | 2 | 0% | 2 | 0% | equal |
@@ -1392,12 +1411,12 @@ Recipes: `fire3{burn:[volcano3]}`
 | host_attacks | 7 | 7 | 0% | 7 | 0% | equal |
 | finite | true | true | 0 | true | 0 | equal |
 | hops.total | 0 | 0 | 0% | 0 | 0% | equal |
-| by_element.fire | 146.7 | 128.7 | -12.270% | 126.9 | -13.497% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.lava | 71.001 | 65.9295 | -7.143% | 65.9295 | -7.143% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| by_element.fire | 146.7 | 124.2 | -15.337% | 125.1 | -14.724% | expected structural difference: E1, E3, E2, E4 |
+| by_element.lava | 71.001 | 65.9295 | -7.143% | 65.9295 | -7.143% | expected structural difference: E1, E3, E2, E4 |
 | statuses.burn | 7 | 7 | 0% | 7 | 0% | equal |
-| fields.fire_trail | 38 | 15 | -60.526% | 14 | -63.158% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.with_applications | 58 | 40 | -31.034% | 38 | -34.483% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_1_applications | 58 | 40 | -31.034% | 38 | -34.483% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| fields.fire_trail | 38 | 12 | -68.421% | 12 | -68.421% | expected structural difference: E1, E3, E2, E4 |
+| roots.with_applications | 58 | 35 | -39.655% | 36 | -37.931% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_1_applications | 58 | 35 | -39.655% | 36 | -37.931% | expected structural difference: E1, E3, E2, E4 |
 
 ### rej-pierce-tick (scenario)
 
@@ -1405,8 +1424,8 @@ Recipes: `fire3{burn:[light3]}`
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 186.831 | 174.231 | -6.744% | 172.431 | -7.708% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| damage_capped | 186.831 | 174.231 | -6.744% | 172.431 | -7.708% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| damage | 186.831 | 170.631 | -8.671% | 170.631 | -8.671% | expected structural difference: E1, E3, E2 |
+| damage_capped | 186.831 | 170.631 | -8.671% | 170.631 | -8.671% | expected structural difference: E1, E3, E2 |
 | kills | 0 | 0 | 0% | 0 | 0% | equal |
 | mana | 0 | 0 | 0% | 0 | 0% | equal |
 | mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
@@ -1418,7 +1437,7 @@ Recipes: `fire3{burn:[light3]}`
 | max_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_status_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_budget_used | 1 | 1 | 0% | 1 | 0% | equal |
-| applications | 58 | 44 | -24.138% | 42 | -27.586% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| applications | 58 | 40 | -31.034% | 40 | -31.034% | expected structural difference: E1, E3, E2 |
 | rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
 | spread_status | 11 | 11 | 0% | 11 | 0% | equal |
 | status_instances | 3 | 3 | 0% | 3 | 0% | equal |
@@ -1427,13 +1446,13 @@ Recipes: `fire3{burn:[light3]}`
 | host_attacks | 7 | 7 | 0% | 7 | 0% | equal |
 | finite | true | true | 0 | true | 0 | equal |
 | hops.total | 0 | 0 | 0% | 0 | 0% | equal |
-| by_element.fire | 146.7 | 134.1 | -8.589% | 132.3 | -9.816% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| by_element.fire | 146.7 | 130.5 | -11.043% | 130.5 | -11.043% | expected structural difference: E1, E3, E2 |
 | by_element.light | 40.131 | 40.131 | 0% | 40.131 | 0% | tolerance (floating arithmetic) |
 | statuses.burn | 7 | 7 | 0% | 7 | 0% | equal |
 | statuses.blind | 14 | 14 | 0% | 14 | 0% | equal |
-| fields.fire_trail | 38 | 15 | -60.526% | 14 | -63.158% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.with_applications | 58 | 44 | -24.138% | 42 | -27.586% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.using_1_applications | 58 | 44 | -24.138% | 42 | -27.586% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| fields.fire_trail | 38 | 12 | -68.421% | 12 | -68.421% | expected structural difference: E1, E3, E2 |
+| roots.with_applications | 58 | 40 | -31.034% | 40 | -31.034% | expected structural difference: E1, E3, E2 |
+| roots.using_1_applications | 58 | 40 | -31.034% | 40 | -31.034% | expected structural difference: E1, E3, E2 |
 
 ### stress-24 (scenario)
 
@@ -1441,62 +1460,63 @@ Recipes: `fire5{fire_hit:[electric5{chain:[ice5{chill:[poison5,blood5]},stone3]}
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 739.359243 | 727.157071 | -1.650% | 737.309101 | -0.277% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
+| damage | 739.359243 | 758.250325 | +2.555% | 744.451868 | +0.689% | expected structural difference: E1, E3, E2, E4 |
 | damage_capped | 720 | 720 | 0% | 720 | 0% | tolerance (floating arithmetic) |
 | kills | 6 | 6 | 0% | 6 | 0% | equal |
 | mana | 12 | 12 | 0% | 12 | 0% | equal |
 | mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
 | mana_mark | 0 | 0 | 0% | 0 | 0% | equal |
 | stones | 6 | 6 | 0% | 6 | 0% | equal |
-| frozen | 5 | 4 | -20.000% | 6 | +20.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
+| frozen | 5 | 3 | -40.000% | 3 | -40.000% | expected structural difference: E1, E3, E2, E4 |
 | nova_frozen | 0 | 0 | 0% | 0 | 0% | equal |
 | shards | 0 | 0 | 0% | 0 | 0% | equal |
 | max_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_status_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_budget_used | 13 | 13 | 0% | 13 | 0% | equal |
-| applications | 142 | 139 | -2.113% | 154 | +8.451% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
+| applications | 142 | 134 | -5.634% | 139 | -2.113% | expected structural difference: E1, E3, E2, E4 |
 | rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
-| spread_status | 216 | 192 | -11.111% | 199 | -7.870% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| status_instances | 78 | 100 | +28.205% | 92 | +17.949% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| pushed_tiles | 1.004457 | 1.090751 | +8.591% | 1.004457 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure; tolerance (floating arithmetic) |
-| seconds | 5.65 | 5.95 | +5.310% | 6.5 | +15.044% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| host_attacks | 3 | 3 | 0% | 3 | 0% | equal |
+| spread_status | 216 | 180 | -16.667% | 175 | -18.981% | expected structural difference: E1, E3, E2, E4 |
+| status_instances | 78 | 90 | +15.385% | 73 | -6.410% | expected structural difference: E1, E3, E2, E4 |
+| pushed_tiles | 1.004457 | 1.004457 | 0% | 1.004457 | 0% | tolerance (floating arithmetic) |
+| seconds | 5.65 | 7.15 | +26.549% | 12.4 | +119.469% | expected structural difference: E1, E3, E2, E4 |
+| host_attacks | 3 | 4 | +33.333% | 3 | 0% | expected structural difference: E1, E3, E2, E4 |
 | finite | true | true | 0 | true | 0 | equal |
-| hops.total | 24 | 27 | +12.500% | 30 | +25.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| by_element.fire | 175.141431 | 171.365537 | -2.156% | 163.699052 | -6.533% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| by_element.electric | 114.162571 | 124.072838 | +8.681% | 118.619273 | +3.904% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| by_element.impact | 77.115924 | 108.055544 | +40.121% | 64.512879 | -16.343% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| by_element.ice | 44.940139 | 41.255708 | -8.199% | 43.285894 | -3.681% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| by_element.physical | 61.310592 | 51.973572 | -15.229% | 58.634202 | -4.365% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| by_element.blood | 44.484046 | 49.179118 | +10.555% | 46.307748 | +4.100% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| by_element.lava | 42.547974 | 34.186614 | -19.652% | 39.784374 | -6.495% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| by_element.water | 21.950686 | 22.035064 | +0.384% | 21.975382 | +0.113% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| by_element.light | 71.05 | 60.17984 | -15.299% | 78.10992 | +9.937% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| by_element.poison | 86.655879 | 64.853236 | -25.160% | 102.380376 | +18.146% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| statuses.burn | 30 | 29 | -3.333% | 30 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| statuses.charge | 9 | 9 | 0% | 8 | -11.111% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| statuses.slow | 28 | 27 | -3.571% | 28 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| statuses.poison | 52 | 50 | -3.846% | 56 | +7.692% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| statuses.bleed | 24 | 19 | -20.833% | 24 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| statuses.cold | 20 | 18 | -10.000% | 20 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| statuses.shred | 20 | 18 | -10.000% | 20 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| statuses.blind | 18 | 15 | -16.667% | 20 | +11.111% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| statuses.wet | 21 | 20 | -4.762% | 22 | +4.762% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| hops.mermi sekerek | 6 | 7 | +16.667% | 8 | +33.333% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| hops.parça | 1 | 1 | 0% | 1 | 0% | equal |
-| hops.durum yandakine geçerek | 9 | 10 | +11.111% | 13 | +44.444% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| hops.durum yandakine atlayarak | 8 | 9 | +12.500% | 8 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| fields.fire_trail | 16 | 5 | -68.750% | 5 | -68.750% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| roots.with_applications | 51 | 47 | -7.843% | 53 | +3.922% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| roots.using_1_applications | 28 | 23 | -17.857% | 29 | +3.571% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| roots.using_2_applications | 3 | 4 | +33.333% | 3 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| roots.using_3_applications | 3 | 3 | 0% | 1 | -66.667% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| roots.using_4_applications | 2 | 0 | -100.000% | 1 | -50.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| roots.using_5_applications | 11 | 12 | +9.091% | 11 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| roots.using_6_applications | 2 | 3 | +50.000% | 6 | +200.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
-| roots.using_11_applications | 1 | 0 | -100.000% | 0 | -100.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
+| hops.total | 24 | 27 | +12.500% | 25 | +4.167% | expected structural difference: E1, E3, E2, E4 |
+| by_element.fire | 175.141431 | 189.015992 | +7.922% | 133.575992 | -23.732% | expected structural difference: E1, E3, E2, E4 |
+| by_element.electric | 114.162571 | 131.722356 | +15.381% | 107.222636 | -6.079% | expected structural difference: E1, E3, E2, E4 |
+| by_element.impact | 77.115924 | 115.71338 | +50.051% | 78.54786 | +1.857% | expected structural difference: E1, E3, E2, E4 |
+| by_element.ice | 44.940139 | 36.69146 | -18.355% | 32.806779 | -26.999% | expected structural difference: E1, E3, E2, E4 |
+| by_element.physical | 61.310592 | 44.914634 | -26.742% | 41.627597 | -32.104% | expected structural difference: E1, E3, E2, E4 |
+| by_element.blood | 44.484046 | 49.9505 | +12.289% | 73.391785 | +64.985% | expected structural difference: E1, E3, E2, E4 |
+| by_element.lava | 42.547974 | 28.212534 | -33.692% | 28.212534 | -33.692% | expected structural difference: E1, E3, E2, E4 |
+| by_element.water | 21.950686 | 18.551146 | -15.487% | 18.551146 | -15.487% | expected structural difference: E1, E3, E2, E4 |
+| by_element.light | 71.05 | 47.63192 | -32.960% | 47.63192 | -32.960% | expected structural difference: E1, E3, E2, E4 |
+| by_element.poison | 86.655879 | 95.846403 | +10.606% | 182.883619 | +111.046% | expected structural difference: E1, E3, E2, E4 |
+| statuses.burn | 30 | 30 | 0% | 27 | -10.000% | expected structural difference: E1, E3, E2, E4 |
+| statuses.charge | 9 | 12 | +33.333% | 9 | 0% | expected structural difference: E1, E3, E2, E4 |
+| statuses.slow | 28 | 24 | -14.286% | 23 | -17.857% | expected structural difference: E1, E3, E2, E4 |
+| statuses.poison | 52 | 48 | -7.692% | 46 | -11.538% | expected structural difference: E1, E3, E2, E4 |
+| statuses.bleed | 24 | 19 | -20.833% | 22 | -8.333% | expected structural difference: E1, E3, E2, E4 |
+| statuses.cold | 20 | 16 | -20.000% | 15 | -25.000% | expected structural difference: E1, E3, E2, E4 |
+| statuses.shred | 20 | 16 | -20.000% | 15 | -25.000% | expected structural difference: E1, E3, E2, E4 |
+| statuses.blind | 18 | 13 | -27.778% | 13 | -27.778% | expected structural difference: E1, E3, E2, E4 |
+| statuses.wet | 21 | 18 | -14.286% | 18 | -14.286% | expected structural difference: E1, E3, E2, E4 |
+| hops.mermi sekerek | 6 | 7 | +16.667% | 6 | 0% | expected structural difference: E1, E3, E2, E4 |
+| hops.parça | 1 | 2 | +100.000% | 1 | 0% | expected structural difference: E1, E3, E2, E4 |
+| hops.durum yandakine geçerek | 9 | 10 | +11.111% | 10 | +11.111% | expected structural difference: E1, E3, E2, E4 |
+| hops.durum yandakine atlayarak | 8 | 8 | 0% | 8 | 0% | equal |
+| fields.fire_trail | 16 | 3 | -81.250% | 3 | -81.250% | expected structural difference: E1, E3, E2, E4 |
+| roots.with_applications | 51 | 44 | -13.725% | 56 | +9.804% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_1_applications | 28 | 23 | -17.857% | 36 | +28.571% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_2_applications | 3 | 4 | +33.333% | 4 | +33.333% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_3_applications | 3 | 0 | -100.000% | 0 | -100.000% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_4_applications | 2 | 0 | -100.000% | 0 | -100.000% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_5_applications | 11 | 11 | 0% | 11 | 0% | equal |
+| roots.using_6_applications | 2 | 3 | +50.000% | 3 | +50.000% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_11_applications | 1 | 0 | -100.000% | 0 | -100.000% | expected structural difference: E1, E3, E2, E4 |
 | roots.using_13_applications | 1 | 1 | 0% | 1 | 0% | equal |
-| roots.using_8_applications | 0 | 1 | new (ref=0) | 1 | new (ref=0) | BUG exposure / structural mixture: E1, E3, E2, E4, B1 exposure, B2 exposure |
+| roots.using_8_applications | 0 | 1 | new (ref=0) | 0 | 0% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_9_applications | 0 | 1 | new (ref=0) | 1 | new (ref=0) | expected structural difference: E1, E3, E2, E4 |
 
 ### plain-fire1 (plain)
 
@@ -1536,8 +1556,8 @@ Recipes: `fire3`
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 146.7 | 134.1 | -8.589% | 132.3 | -9.816% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| damage_capped | 146.7 | 134.1 | -8.589% | 132.3 | -9.816% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| damage | 146.7 | 130.5 | -11.043% | 130.5 | -11.043% | expected structural difference: E1, E3, E2 |
+| damage_capped | 146.7 | 130.5 | -11.043% | 130.5 | -11.043% | expected structural difference: E1, E3, E2 |
 | kills | 0 | 0 | 0% | 0 | 0% | equal |
 | mana | 0 | 0 | 0% | 0 | 0% | equal |
 | mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
@@ -1549,7 +1569,7 @@ Recipes: `fire3`
 | max_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_status_gen | 0 | 0 | 0% | 0 | 0% | equal |
 | max_budget_used | 1 | 1 | 0% | 1 | 0% | equal |
-| applications | 58 | 44 | -24.138% | 42 | -27.586% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| applications | 58 | 40 | -31.034% | 40 | -31.034% | expected structural difference: E1, E3, E2 |
 | rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
 | spread_status | 0 | 0 | 0% | 0 | 0% | equal |
 | status_instances | 1 | 1 | 0% | 1 | 0% | equal |
@@ -1558,11 +1578,11 @@ Recipes: `fire3`
 | host_attacks | 7 | 7 | 0% | 7 | 0% | equal |
 | finite | true | true | 0 | true | 0 | equal |
 | hops.total | 0 | 0 | 0% | 0 | 0% | equal |
-| by_element.fire | 146.7 | 134.1 | -8.589% | 132.3 | -9.816% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| by_element.fire | 146.7 | 130.5 | -11.043% | 130.5 | -11.043% | expected structural difference: E1, E3, E2 |
 | statuses.burn | 7 | 7 | 0% | 7 | 0% | equal |
-| fields.fire_trail | 38 | 15 | -60.526% | 14 | -63.158% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.with_applications | 58 | 44 | -24.138% | 42 | -27.586% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.using_1_applications | 58 | 44 | -24.138% | 42 | -27.586% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| fields.fire_trail | 38 | 12 | -68.421% | 12 | -68.421% | expected structural difference: E1, E3, E2 |
+| roots.with_applications | 58 | 40 | -31.034% | 40 | -31.034% | expected structural difference: E1, E3, E2 |
+| roots.using_1_applications | 58 | 40 | -31.034% | 40 | -31.034% | expected structural difference: E1, E3, E2 |
 
 ### plain-fire5 (plain)
 
@@ -1570,33 +1590,33 @@ Recipes: `fire5`
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 308.25 | 232.2 | -24.672% | 226.35 | -26.569% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| damage_capped | 308.25 | 228.9 | -25.742% | 223.05 | -27.640% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| kills | 0 | 1 | new (ref=0) | 1 | new (ref=0) | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| mana | 0 | 2 | new (ref=0) | 2 | new (ref=0) | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| damage | 308.25 | 221.4 | -28.175% | 219.15 | -28.905% | expected structural difference: E1, E3, E2 |
+| damage_capped | 308.25 | 219.9 | -28.662% | 217.65 | -29.392% | expected structural difference: E1, E3, E2 |
+| kills | 0 | 1 | new (ref=0) | 1 | new (ref=0) | expected structural difference: E1, E3, E2 |
+| mana | 0 | 2 | new (ref=0) | 2 | new (ref=0) | expected structural difference: E1, E3, E2 |
 | mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
 | mana_mark | 0 | 0 | 0% | 0 | 0% | equal |
-| stones | 0 | 1 | new (ref=0) | 1 | new (ref=0) | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| stones | 0 | 1 | new (ref=0) | 1 | new (ref=0) | expected structural difference: E1, E3, E2 |
 | frozen | 0 | 0 | 0% | 0 | 0% | equal |
 | nova_frozen | 0 | 0 | 0% | 0 | 0% | equal |
 | shards | 0 | 0 | 0% | 0 | 0% | equal |
 | max_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_status_gen | 0 | 0 | 0% | 0 | 0% | equal |
 | max_budget_used | 1 | 1 | 0% | 1 | 0% | equal |
-| applications | 100 | 58 | -42.000% | 56 | -44.000% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| applications | 100 | 52 | -48.000% | 52 | -48.000% | expected structural difference: E1, E3, E2 |
 | rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
 | spread_status | 0 | 0 | 0% | 0 | 0% | equal |
-| status_instances | 2 | 3 | +50.000% | 3 | +50.000% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| status_instances | 2 | 3 | +50.000% | 3 | +50.000% | expected structural difference: E1, E3, E2 |
 | pushed_tiles | 0 | 0 | 0% | 0 | 0% | equal |
 | seconds | 14 | 14 | 0% | 14 | 0% | tolerance (floating arithmetic) |
 | host_attacks | 7 | 7 | 0% | 7 | 0% | equal |
 | finite | true | true | 0 | true | 0 | equal |
 | hops.total | 0 | 0 | 0% | 0 | 0% | equal |
-| by_element.fire | 308.25 | 232.2 | -24.672% | 226.35 | -26.569% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| by_element.fire | 308.25 | 221.4 | -28.175% | 219.15 | -28.905% | expected structural difference: E1, E3, E2 |
 | statuses.burn | 7 | 7 | 0% | 7 | 0% | equal |
-| fields.fire_trail | 44 | 11 | -75.000% | 12 | -72.727% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.with_applications | 100 | 58 | -42.000% | 56 | -44.000% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.using_1_applications | 100 | 58 | -42.000% | 56 | -44.000% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| fields.fire_trail | 44 | 10 | -77.273% | 10 | -77.273% | expected structural difference: E1, E3, E2 |
+| roots.with_applications | 100 | 52 | -48.000% | 52 | -48.000% | expected structural difference: E1, E3, E2 |
+| roots.using_1_applications | 100 | 52 | -48.000% | 52 | -48.000% | expected structural difference: E1, E3, E2 |
 
 ### plain-ice1 (plain)
 
@@ -2739,8 +2759,8 @@ Recipes: `mana3`
 | damage | 72 | 72 | 0% | 72 | 0% | equal |
 | damage_capped | 72 | 72 | 0% | 72 | 0% | equal |
 | kills | 0 | 0 | 0% | 0 | 0% | equal |
-| mana | 63 | 63 | 0% | 63 | 0% | equal |
-| mana_siphon | 54 | 54 | 0% | 54 | 0% | equal |
+| mana | 58.5 | 58.5 | 0% | 58.5 | 0% | equal |
+| mana_siphon | 49.5 | 49.5 | 0% | 49.5 | 0% | equal |
 | mana_mark | 9 | 9 | 0% | 9 | 0% | equal |
 | stones | 0 | 0 | 0% | 0 | 0% | equal |
 | frozen | 0 | 0 | 0% | 0 | 0% | equal |
@@ -2772,8 +2792,8 @@ Recipes: `mana5`
 | damage | 158.4 | 158.4 | 0% | 158.4 | 0% | equal |
 | damage_capped | 158.4 | 158.4 | 0% | 158.4 | 0% | equal |
 | kills | 0 | 0 | 0% | 0 | 0% | equal |
-| mana | 199.98 | 199.98 | 0% | 199.98 | 0% | tolerance (floating arithmetic) |
-| mana_siphon | 158.4 | 158.4 | 0% | 158.4 | 0% | equal |
+| mana | 147.18 | 147.18 | 0% | 147.18 | 0% | equal |
+| mana_siphon | 105.6 | 105.6 | 0% | 105.6 | 0% | tolerance (floating arithmetic) |
 | mana_mark | 41.58 | 41.58 | 0% | 41.58 | 0% | equal |
 | stones | 0 | 0 | 0% | 0 | 0% | equal |
 | frozen | 0 | 0 | 0% | 0 | 0% | equal |
@@ -2802,44 +2822,44 @@ Recipes: `volcano5{lava_blob:[fire3,electric3,ice2]}`
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 760.740282 | 742.832554 | -2.354% | 784.020058 | +3.060% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| damage_capped | 701.506426 | 720 | +2.636% | 707.806426 | +0.898% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| kills | 5 | 6 | +20.000% | 5 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| mana | 10 | 12 | +20.000% | 10 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| damage | 760.740282 | 740.312554 | -2.685% | 782.130058 | +2.812% | expected structural difference: E1, E3, E2, E4 |
+| damage_capped | 701.506426 | 720 | +2.636% | 707.806426 | +0.898% | expected structural difference: E1, E3, E2, E4 |
+| kills | 5 | 6 | +20.000% | 5 | 0% | expected structural difference: E1, E3, E2, E4 |
+| mana | 10 | 12 | +20.000% | 10 | 0% | expected structural difference: E1, E3, E2, E4 |
 | mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
 | mana_mark | 0 | 0 | 0% | 0 | 0% | equal |
-| stones | 5 | 6 | +20.000% | 5 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| stones | 5 | 6 | +20.000% | 5 | 0% | expected structural difference: E1, E3, E2, E4 |
 | frozen | 0 | 0 | 0% | 0 | 0% | equal |
 | nova_frozen | 0 | 0 | 0% | 0 | 0% | equal |
 | shards | 0 | 0 | 0% | 0 | 0% | equal |
 | max_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_status_gen | 1 | 1 | 0% | 1 | 0% | equal |
 | max_budget_used | 7 | 7 | 0% | 7 | 0% | equal |
-| applications | 90 | 80 | -11.111% | 93 | +3.333% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| applications | 90 | 79 | -12.222% | 90 | 0% | expected structural difference: E1, E3, E2, E4 |
 | rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
-| spread_status | 26 | 24 | -7.692% | 30 | +15.385% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| status_instances | 10 | 10 | 0% | 10 | 0% | equal |
+| spread_status | 26 | 24 | -7.692% | 30 | +15.385% | expected structural difference: E1, E3, E2, E4 |
+| status_instances | 10 | 11 | +10.000% | 10 | 0% | expected structural difference: E1, E3, E2, E4 |
 | pushed_tiles | 0 | 0 | 0% | 0 | 0% | equal |
-| seconds | 14 | 10.9 | -22.143% | 14 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure; tolerance (floating arithmetic) |
-| host_attacks | 8 | 7 | -12.500% | 8 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| seconds | 14 | 10.25 | -26.786% | 14 | 0% | expected structural difference: E1, E3, E2, E4; tolerance (floating arithmetic) |
+| host_attacks | 8 | 7 | -12.500% | 8 | 0% | expected structural difference: E1, E3, E2, E4 |
 | finite | true | true | 0 | true | 0 | equal |
-| hops.total | 15 | 13 | -13.333% | 16 | +6.667% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.lava | 502.540043 | 484.162965 | -3.657% | 522.40662 | +3.953% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.fire | 126.205254 | 123.861654 | -1.857% | 127.140363 | +0.741% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.ice | 62.523941 | 63.856391 | +2.131% | 63.697772 | +1.877% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.electric | 69.471045 | 70.951545 | +2.131% | 70.775302 | +1.877% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| statuses.burn | 19 | 19 | 0% | 21 | +10.526% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| statuses.slow | 19 | 19 | 0% | 21 | +10.526% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| hops.lav topu düşmandan düşmana zıplayarak | 15 | 13 | -13.333% | 16 | +6.667% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| fields.lava_pool | 6 | 4 | -33.333% | 5 | -16.667% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| fields.fire_trail | 36 | 6 | -83.333% | 10 | -72.222% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.with_applications | 55 | 46 | -16.364% | 55 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_1_applications | 47 | 39 | -17.021% | 47 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_2_applications | 1 | 0 | -100.000% | 0 | -100.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_5_applications | 2 | 1 | -50.000% | 1 | -50.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_6_applications | 4 | 3 | -25.000% | 5 | +25.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_7_applications | 1 | 2 | +100.000% | 1 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_4_applications | 0 | 1 | new (ref=0) | 1 | new (ref=0) | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| hops.total | 15 | 13 | -13.333% | 16 | +6.667% | expected structural difference: E1, E3, E2, E4 |
+| by_element.lava | 502.540043 | 484.162965 | -3.657% | 522.40662 | +3.953% | expected structural difference: E1, E3, E2, E4 |
+| by_element.fire | 126.205254 | 121.341654 | -3.854% | 125.250363 | -0.757% | expected structural difference: E1, E3, E2, E4 |
+| by_element.ice | 62.523941 | 63.856391 | +2.131% | 63.697772 | +1.877% | expected structural difference: E1, E3, E2, E4 |
+| by_element.electric | 69.471045 | 70.951545 | +2.131% | 70.775302 | +1.877% | expected structural difference: E1, E3, E2, E4 |
+| statuses.burn | 19 | 19 | 0% | 21 | +10.526% | expected structural difference: E1, E3, E2, E4 |
+| statuses.slow | 19 | 19 | 0% | 21 | +10.526% | expected structural difference: E1, E3, E2, E4 |
+| hops.lav topu düşmandan düşmana zıplayarak | 15 | 13 | -13.333% | 16 | +6.667% | expected structural difference: E1, E3, E2, E4 |
+| fields.lava_pool | 6 | 4 | -33.333% | 5 | -16.667% | expected structural difference: E1, E3, E2, E4 |
+| fields.fire_trail | 36 | 5 | -86.111% | 8 | -77.778% | expected structural difference: E1, E3, E2, E4 |
+| roots.with_applications | 55 | 45 | -18.182% | 52 | -5.455% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_1_applications | 47 | 38 | -19.149% | 44 | -6.383% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_2_applications | 1 | 0 | -100.000% | 0 | -100.000% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_5_applications | 2 | 1 | -50.000% | 1 | -50.000% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_6_applications | 4 | 3 | -25.000% | 5 | +25.000% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_7_applications | 1 | 2 | +100.000% | 1 | 0% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_4_applications | 0 | 1 | new (ref=0) | 1 | new (ref=0) | expected structural difference: E1, E3, E2, E4 |
 
 ### shuffle-1 (probe)
 
@@ -2847,44 +2867,44 @@ Recipes: `volcano5{lava_blob:[fire3,ice2,electric3]}`
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 760.740282 | 742.832554 | -2.354% | 784.020058 | +3.060% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| damage_capped | 701.506426 | 720 | +2.636% | 707.806426 | +0.898% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| kills | 5 | 6 | +20.000% | 5 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| mana | 10 | 12 | +20.000% | 10 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| damage | 760.740282 | 740.312554 | -2.685% | 782.130058 | +2.812% | expected structural difference: E1, E3, E2, E4 |
+| damage_capped | 701.506426 | 720 | +2.636% | 707.806426 | +0.898% | expected structural difference: E1, E3, E2, E4 |
+| kills | 5 | 6 | +20.000% | 5 | 0% | expected structural difference: E1, E3, E2, E4 |
+| mana | 10 | 12 | +20.000% | 10 | 0% | expected structural difference: E1, E3, E2, E4 |
 | mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
 | mana_mark | 0 | 0 | 0% | 0 | 0% | equal |
-| stones | 5 | 6 | +20.000% | 5 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| stones | 5 | 6 | +20.000% | 5 | 0% | expected structural difference: E1, E3, E2, E4 |
 | frozen | 0 | 0 | 0% | 0 | 0% | equal |
 | nova_frozen | 0 | 0 | 0% | 0 | 0% | equal |
 | shards | 0 | 0 | 0% | 0 | 0% | equal |
 | max_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_status_gen | 1 | 1 | 0% | 1 | 0% | equal |
 | max_budget_used | 7 | 7 | 0% | 7 | 0% | equal |
-| applications | 90 | 80 | -11.111% | 93 | +3.333% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| applications | 90 | 79 | -12.222% | 90 | 0% | expected structural difference: E1, E3, E2, E4 |
 | rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
-| spread_status | 26 | 24 | -7.692% | 30 | +15.385% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| status_instances | 10 | 10 | 0% | 10 | 0% | equal |
+| spread_status | 26 | 24 | -7.692% | 30 | +15.385% | expected structural difference: E1, E3, E2, E4 |
+| status_instances | 10 | 11 | +10.000% | 10 | 0% | expected structural difference: E1, E3, E2, E4 |
 | pushed_tiles | 0 | 0 | 0% | 0 | 0% | equal |
-| seconds | 14 | 10.9 | -22.143% | 14 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure; tolerance (floating arithmetic) |
-| host_attacks | 8 | 7 | -12.500% | 8 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| seconds | 14 | 10.25 | -26.786% | 14 | 0% | expected structural difference: E1, E3, E2, E4; tolerance (floating arithmetic) |
+| host_attacks | 8 | 7 | -12.500% | 8 | 0% | expected structural difference: E1, E3, E2, E4 |
 | finite | true | true | 0 | true | 0 | equal |
-| hops.total | 15 | 13 | -13.333% | 16 | +6.667% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.lava | 502.540043 | 484.162965 | -3.657% | 522.40662 | +3.953% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.fire | 126.205254 | 123.861654 | -1.857% | 127.140363 | +0.741% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.ice | 62.523941 | 63.856391 | +2.131% | 63.697772 | +1.877% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.electric | 69.471045 | 70.951545 | +2.131% | 70.775302 | +1.877% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| statuses.burn | 19 | 19 | 0% | 21 | +10.526% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| statuses.slow | 19 | 19 | 0% | 21 | +10.526% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| hops.lav topu düşmandan düşmana zıplayarak | 15 | 13 | -13.333% | 16 | +6.667% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| fields.lava_pool | 6 | 4 | -33.333% | 5 | -16.667% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| fields.fire_trail | 36 | 6 | -83.333% | 10 | -72.222% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.with_applications | 55 | 46 | -16.364% | 55 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_1_applications | 47 | 39 | -17.021% | 47 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_2_applications | 1 | 0 | -100.000% | 0 | -100.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_5_applications | 2 | 1 | -50.000% | 1 | -50.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_6_applications | 4 | 3 | -25.000% | 5 | +25.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_7_applications | 1 | 2 | +100.000% | 1 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_4_applications | 0 | 1 | new (ref=0) | 1 | new (ref=0) | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| hops.total | 15 | 13 | -13.333% | 16 | +6.667% | expected structural difference: E1, E3, E2, E4 |
+| by_element.lava | 502.540043 | 484.162965 | -3.657% | 522.40662 | +3.953% | expected structural difference: E1, E3, E2, E4 |
+| by_element.fire | 126.205254 | 121.341654 | -3.854% | 125.250363 | -0.757% | expected structural difference: E1, E3, E2, E4 |
+| by_element.ice | 62.523941 | 63.856391 | +2.131% | 63.697772 | +1.877% | expected structural difference: E1, E3, E2, E4 |
+| by_element.electric | 69.471045 | 70.951545 | +2.131% | 70.775302 | +1.877% | expected structural difference: E1, E3, E2, E4 |
+| statuses.burn | 19 | 19 | 0% | 21 | +10.526% | expected structural difference: E1, E3, E2, E4 |
+| statuses.slow | 19 | 19 | 0% | 21 | +10.526% | expected structural difference: E1, E3, E2, E4 |
+| hops.lav topu düşmandan düşmana zıplayarak | 15 | 13 | -13.333% | 16 | +6.667% | expected structural difference: E1, E3, E2, E4 |
+| fields.lava_pool | 6 | 4 | -33.333% | 5 | -16.667% | expected structural difference: E1, E3, E2, E4 |
+| fields.fire_trail | 36 | 5 | -86.111% | 8 | -77.778% | expected structural difference: E1, E3, E2, E4 |
+| roots.with_applications | 55 | 45 | -18.182% | 52 | -5.455% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_1_applications | 47 | 38 | -19.149% | 44 | -6.383% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_2_applications | 1 | 0 | -100.000% | 0 | -100.000% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_5_applications | 2 | 1 | -50.000% | 1 | -50.000% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_6_applications | 4 | 3 | -25.000% | 5 | +25.000% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_7_applications | 1 | 2 | +100.000% | 1 | 0% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_4_applications | 0 | 1 | new (ref=0) | 1 | new (ref=0) | expected structural difference: E1, E3, E2, E4 |
 
 ### shuffle-2 (probe)
 
@@ -2892,44 +2912,44 @@ Recipes: `volcano5{lava_blob:[electric3,fire3,ice2]}`
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 760.740282 | 742.832554 | -2.354% | 784.020058 | +3.060% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| damage_capped | 701.506426 | 720 | +2.636% | 707.806426 | +0.898% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| kills | 5 | 6 | +20.000% | 5 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| mana | 10 | 12 | +20.000% | 10 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| damage | 760.740282 | 740.312554 | -2.685% | 782.130058 | +2.812% | expected structural difference: E1, E3, E2, E4 |
+| damage_capped | 701.506426 | 720 | +2.636% | 707.806426 | +0.898% | expected structural difference: E1, E3, E2, E4 |
+| kills | 5 | 6 | +20.000% | 5 | 0% | expected structural difference: E1, E3, E2, E4 |
+| mana | 10 | 12 | +20.000% | 10 | 0% | expected structural difference: E1, E3, E2, E4 |
 | mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
 | mana_mark | 0 | 0 | 0% | 0 | 0% | equal |
-| stones | 5 | 6 | +20.000% | 5 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| stones | 5 | 6 | +20.000% | 5 | 0% | expected structural difference: E1, E3, E2, E4 |
 | frozen | 0 | 0 | 0% | 0 | 0% | equal |
 | nova_frozen | 0 | 0 | 0% | 0 | 0% | equal |
 | shards | 0 | 0 | 0% | 0 | 0% | equal |
 | max_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_status_gen | 1 | 1 | 0% | 1 | 0% | equal |
 | max_budget_used | 7 | 7 | 0% | 7 | 0% | equal |
-| applications | 90 | 80 | -11.111% | 93 | +3.333% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| applications | 90 | 79 | -12.222% | 90 | 0% | expected structural difference: E1, E3, E2, E4 |
 | rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
-| spread_status | 26 | 24 | -7.692% | 30 | +15.385% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| status_instances | 10 | 10 | 0% | 10 | 0% | equal |
+| spread_status | 26 | 24 | -7.692% | 30 | +15.385% | expected structural difference: E1, E3, E2, E4 |
+| status_instances | 10 | 11 | +10.000% | 10 | 0% | expected structural difference: E1, E3, E2, E4 |
 | pushed_tiles | 0 | 0 | 0% | 0 | 0% | equal |
-| seconds | 14 | 10.9 | -22.143% | 14 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure; tolerance (floating arithmetic) |
-| host_attacks | 8 | 7 | -12.500% | 8 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| seconds | 14 | 10.25 | -26.786% | 14 | 0% | expected structural difference: E1, E3, E2, E4; tolerance (floating arithmetic) |
+| host_attacks | 8 | 7 | -12.500% | 8 | 0% | expected structural difference: E1, E3, E2, E4 |
 | finite | true | true | 0 | true | 0 | equal |
-| hops.total | 15 | 13 | -13.333% | 16 | +6.667% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.lava | 502.540043 | 484.162965 | -3.657% | 522.40662 | +3.953% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.fire | 126.205254 | 123.861654 | -1.857% | 127.140363 | +0.741% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.ice | 62.523941 | 63.856391 | +2.131% | 63.697772 | +1.877% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.electric | 69.471045 | 70.951545 | +2.131% | 70.775302 | +1.877% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| statuses.burn | 19 | 19 | 0% | 21 | +10.526% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| statuses.slow | 19 | 19 | 0% | 21 | +10.526% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| hops.lav topu düşmandan düşmana zıplayarak | 15 | 13 | -13.333% | 16 | +6.667% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| fields.lava_pool | 6 | 4 | -33.333% | 5 | -16.667% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| fields.fire_trail | 36 | 6 | -83.333% | 10 | -72.222% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.with_applications | 55 | 46 | -16.364% | 55 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_1_applications | 47 | 39 | -17.021% | 47 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_2_applications | 1 | 0 | -100.000% | 0 | -100.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_5_applications | 2 | 1 | -50.000% | 1 | -50.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_6_applications | 4 | 3 | -25.000% | 5 | +25.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_7_applications | 1 | 2 | +100.000% | 1 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_4_applications | 0 | 1 | new (ref=0) | 1 | new (ref=0) | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| hops.total | 15 | 13 | -13.333% | 16 | +6.667% | expected structural difference: E1, E3, E2, E4 |
+| by_element.lava | 502.540043 | 484.162965 | -3.657% | 522.40662 | +3.953% | expected structural difference: E1, E3, E2, E4 |
+| by_element.fire | 126.205254 | 121.341654 | -3.854% | 125.250363 | -0.757% | expected structural difference: E1, E3, E2, E4 |
+| by_element.ice | 62.523941 | 63.856391 | +2.131% | 63.697772 | +1.877% | expected structural difference: E1, E3, E2, E4 |
+| by_element.electric | 69.471045 | 70.951545 | +2.131% | 70.775302 | +1.877% | expected structural difference: E1, E3, E2, E4 |
+| statuses.burn | 19 | 19 | 0% | 21 | +10.526% | expected structural difference: E1, E3, E2, E4 |
+| statuses.slow | 19 | 19 | 0% | 21 | +10.526% | expected structural difference: E1, E3, E2, E4 |
+| hops.lav topu düşmandan düşmana zıplayarak | 15 | 13 | -13.333% | 16 | +6.667% | expected structural difference: E1, E3, E2, E4 |
+| fields.lava_pool | 6 | 4 | -33.333% | 5 | -16.667% | expected structural difference: E1, E3, E2, E4 |
+| fields.fire_trail | 36 | 5 | -86.111% | 8 | -77.778% | expected structural difference: E1, E3, E2, E4 |
+| roots.with_applications | 55 | 45 | -18.182% | 52 | -5.455% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_1_applications | 47 | 38 | -19.149% | 44 | -6.383% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_2_applications | 1 | 0 | -100.000% | 0 | -100.000% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_5_applications | 2 | 1 | -50.000% | 1 | -50.000% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_6_applications | 4 | 3 | -25.000% | 5 | +25.000% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_7_applications | 1 | 2 | +100.000% | 1 | 0% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_4_applications | 0 | 1 | new (ref=0) | 1 | new (ref=0) | expected structural difference: E1, E3, E2, E4 |
 
 ### shuffle-3 (probe)
 
@@ -2937,44 +2957,44 @@ Recipes: `volcano5{lava_blob:[electric3,ice2,fire3]}`
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 760.740282 | 742.832554 | -2.354% | 784.020058 | +3.060% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| damage_capped | 701.506426 | 720 | +2.636% | 707.806426 | +0.898% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| kills | 5 | 6 | +20.000% | 5 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| mana | 10 | 12 | +20.000% | 10 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| damage | 760.740282 | 740.312554 | -2.685% | 782.130058 | +2.812% | expected structural difference: E1, E3, E2, E4 |
+| damage_capped | 701.506426 | 720 | +2.636% | 707.806426 | +0.898% | expected structural difference: E1, E3, E2, E4 |
+| kills | 5 | 6 | +20.000% | 5 | 0% | expected structural difference: E1, E3, E2, E4 |
+| mana | 10 | 12 | +20.000% | 10 | 0% | expected structural difference: E1, E3, E2, E4 |
 | mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
 | mana_mark | 0 | 0 | 0% | 0 | 0% | equal |
-| stones | 5 | 6 | +20.000% | 5 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| stones | 5 | 6 | +20.000% | 5 | 0% | expected structural difference: E1, E3, E2, E4 |
 | frozen | 0 | 0 | 0% | 0 | 0% | equal |
 | nova_frozen | 0 | 0 | 0% | 0 | 0% | equal |
 | shards | 0 | 0 | 0% | 0 | 0% | equal |
 | max_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_status_gen | 1 | 1 | 0% | 1 | 0% | equal |
 | max_budget_used | 7 | 7 | 0% | 7 | 0% | equal |
-| applications | 90 | 80 | -11.111% | 93 | +3.333% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| applications | 90 | 79 | -12.222% | 90 | 0% | expected structural difference: E1, E3, E2, E4 |
 | rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
-| spread_status | 26 | 24 | -7.692% | 30 | +15.385% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| status_instances | 10 | 10 | 0% | 10 | 0% | equal |
+| spread_status | 26 | 24 | -7.692% | 30 | +15.385% | expected structural difference: E1, E3, E2, E4 |
+| status_instances | 10 | 11 | +10.000% | 10 | 0% | expected structural difference: E1, E3, E2, E4 |
 | pushed_tiles | 0 | 0 | 0% | 0 | 0% | equal |
-| seconds | 14 | 10.9 | -22.143% | 14 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure; tolerance (floating arithmetic) |
-| host_attacks | 8 | 7 | -12.500% | 8 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| seconds | 14 | 10.25 | -26.786% | 14 | 0% | expected structural difference: E1, E3, E2, E4; tolerance (floating arithmetic) |
+| host_attacks | 8 | 7 | -12.500% | 8 | 0% | expected structural difference: E1, E3, E2, E4 |
 | finite | true | true | 0 | true | 0 | equal |
-| hops.total | 15 | 13 | -13.333% | 16 | +6.667% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.lava | 502.540043 | 484.162965 | -3.657% | 522.40662 | +3.953% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.fire | 126.205254 | 123.861654 | -1.857% | 127.140363 | +0.741% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.ice | 62.523941 | 63.856391 | +2.131% | 63.697772 | +1.877% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.electric | 69.471045 | 70.951545 | +2.131% | 70.775302 | +1.877% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| statuses.burn | 19 | 19 | 0% | 21 | +10.526% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| statuses.slow | 19 | 19 | 0% | 21 | +10.526% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| hops.lav topu düşmandan düşmana zıplayarak | 15 | 13 | -13.333% | 16 | +6.667% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| fields.lava_pool | 6 | 4 | -33.333% | 5 | -16.667% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| fields.fire_trail | 36 | 6 | -83.333% | 10 | -72.222% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.with_applications | 55 | 46 | -16.364% | 55 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_1_applications | 47 | 39 | -17.021% | 47 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_2_applications | 1 | 0 | -100.000% | 0 | -100.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_5_applications | 2 | 1 | -50.000% | 1 | -50.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_6_applications | 4 | 3 | -25.000% | 5 | +25.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_7_applications | 1 | 2 | +100.000% | 1 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_4_applications | 0 | 1 | new (ref=0) | 1 | new (ref=0) | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| hops.total | 15 | 13 | -13.333% | 16 | +6.667% | expected structural difference: E1, E3, E2, E4 |
+| by_element.lava | 502.540043 | 484.162965 | -3.657% | 522.40662 | +3.953% | expected structural difference: E1, E3, E2, E4 |
+| by_element.fire | 126.205254 | 121.341654 | -3.854% | 125.250363 | -0.757% | expected structural difference: E1, E3, E2, E4 |
+| by_element.ice | 62.523941 | 63.856391 | +2.131% | 63.697772 | +1.877% | expected structural difference: E1, E3, E2, E4 |
+| by_element.electric | 69.471045 | 70.951545 | +2.131% | 70.775302 | +1.877% | expected structural difference: E1, E3, E2, E4 |
+| statuses.burn | 19 | 19 | 0% | 21 | +10.526% | expected structural difference: E1, E3, E2, E4 |
+| statuses.slow | 19 | 19 | 0% | 21 | +10.526% | expected structural difference: E1, E3, E2, E4 |
+| hops.lav topu düşmandan düşmana zıplayarak | 15 | 13 | -13.333% | 16 | +6.667% | expected structural difference: E1, E3, E2, E4 |
+| fields.lava_pool | 6 | 4 | -33.333% | 5 | -16.667% | expected structural difference: E1, E3, E2, E4 |
+| fields.fire_trail | 36 | 5 | -86.111% | 8 | -77.778% | expected structural difference: E1, E3, E2, E4 |
+| roots.with_applications | 55 | 45 | -18.182% | 52 | -5.455% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_1_applications | 47 | 38 | -19.149% | 44 | -6.383% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_2_applications | 1 | 0 | -100.000% | 0 | -100.000% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_5_applications | 2 | 1 | -50.000% | 1 | -50.000% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_6_applications | 4 | 3 | -25.000% | 5 | +25.000% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_7_applications | 1 | 2 | +100.000% | 1 | 0% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_4_applications | 0 | 1 | new (ref=0) | 1 | new (ref=0) | expected structural difference: E1, E3, E2, E4 |
 
 ### shuffle-4 (probe)
 
@@ -2982,44 +3002,44 @@ Recipes: `volcano5{lava_blob:[ice2,fire3,electric3]}`
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 760.740282 | 742.832554 | -2.354% | 784.020058 | +3.060% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| damage_capped | 701.506426 | 720 | +2.636% | 707.806426 | +0.898% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| kills | 5 | 6 | +20.000% | 5 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| mana | 10 | 12 | +20.000% | 10 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| damage | 760.740282 | 740.312554 | -2.685% | 782.130058 | +2.812% | expected structural difference: E1, E3, E2, E4 |
+| damage_capped | 701.506426 | 720 | +2.636% | 707.806426 | +0.898% | expected structural difference: E1, E3, E2, E4 |
+| kills | 5 | 6 | +20.000% | 5 | 0% | expected structural difference: E1, E3, E2, E4 |
+| mana | 10 | 12 | +20.000% | 10 | 0% | expected structural difference: E1, E3, E2, E4 |
 | mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
 | mana_mark | 0 | 0 | 0% | 0 | 0% | equal |
-| stones | 5 | 6 | +20.000% | 5 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| stones | 5 | 6 | +20.000% | 5 | 0% | expected structural difference: E1, E3, E2, E4 |
 | frozen | 0 | 0 | 0% | 0 | 0% | equal |
 | nova_frozen | 0 | 0 | 0% | 0 | 0% | equal |
 | shards | 0 | 0 | 0% | 0 | 0% | equal |
 | max_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_status_gen | 1 | 1 | 0% | 1 | 0% | equal |
 | max_budget_used | 7 | 7 | 0% | 7 | 0% | equal |
-| applications | 90 | 80 | -11.111% | 93 | +3.333% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| applications | 90 | 79 | -12.222% | 90 | 0% | expected structural difference: E1, E3, E2, E4 |
 | rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
-| spread_status | 26 | 24 | -7.692% | 30 | +15.385% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| status_instances | 10 | 10 | 0% | 10 | 0% | equal |
+| spread_status | 26 | 24 | -7.692% | 30 | +15.385% | expected structural difference: E1, E3, E2, E4 |
+| status_instances | 10 | 11 | +10.000% | 10 | 0% | expected structural difference: E1, E3, E2, E4 |
 | pushed_tiles | 0 | 0 | 0% | 0 | 0% | equal |
-| seconds | 14 | 10.9 | -22.143% | 14 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure; tolerance (floating arithmetic) |
-| host_attacks | 8 | 7 | -12.500% | 8 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| seconds | 14 | 10.25 | -26.786% | 14 | 0% | expected structural difference: E1, E3, E2, E4; tolerance (floating arithmetic) |
+| host_attacks | 8 | 7 | -12.500% | 8 | 0% | expected structural difference: E1, E3, E2, E4 |
 | finite | true | true | 0 | true | 0 | equal |
-| hops.total | 15 | 13 | -13.333% | 16 | +6.667% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.lava | 502.540043 | 484.162965 | -3.657% | 522.40662 | +3.953% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.fire | 126.205254 | 123.861654 | -1.857% | 127.140363 | +0.741% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.ice | 62.523941 | 63.856391 | +2.131% | 63.697772 | +1.877% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.electric | 69.471045 | 70.951545 | +2.131% | 70.775302 | +1.877% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| statuses.burn | 19 | 19 | 0% | 21 | +10.526% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| statuses.slow | 19 | 19 | 0% | 21 | +10.526% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| hops.lav topu düşmandan düşmana zıplayarak | 15 | 13 | -13.333% | 16 | +6.667% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| fields.lava_pool | 6 | 4 | -33.333% | 5 | -16.667% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| fields.fire_trail | 36 | 6 | -83.333% | 10 | -72.222% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.with_applications | 55 | 46 | -16.364% | 55 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_1_applications | 47 | 39 | -17.021% | 47 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_2_applications | 1 | 0 | -100.000% | 0 | -100.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_5_applications | 2 | 1 | -50.000% | 1 | -50.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_6_applications | 4 | 3 | -25.000% | 5 | +25.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_7_applications | 1 | 2 | +100.000% | 1 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_4_applications | 0 | 1 | new (ref=0) | 1 | new (ref=0) | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| hops.total | 15 | 13 | -13.333% | 16 | +6.667% | expected structural difference: E1, E3, E2, E4 |
+| by_element.lava | 502.540043 | 484.162965 | -3.657% | 522.40662 | +3.953% | expected structural difference: E1, E3, E2, E4 |
+| by_element.fire | 126.205254 | 121.341654 | -3.854% | 125.250363 | -0.757% | expected structural difference: E1, E3, E2, E4 |
+| by_element.ice | 62.523941 | 63.856391 | +2.131% | 63.697772 | +1.877% | expected structural difference: E1, E3, E2, E4 |
+| by_element.electric | 69.471045 | 70.951545 | +2.131% | 70.775302 | +1.877% | expected structural difference: E1, E3, E2, E4 |
+| statuses.burn | 19 | 19 | 0% | 21 | +10.526% | expected structural difference: E1, E3, E2, E4 |
+| statuses.slow | 19 | 19 | 0% | 21 | +10.526% | expected structural difference: E1, E3, E2, E4 |
+| hops.lav topu düşmandan düşmana zıplayarak | 15 | 13 | -13.333% | 16 | +6.667% | expected structural difference: E1, E3, E2, E4 |
+| fields.lava_pool | 6 | 4 | -33.333% | 5 | -16.667% | expected structural difference: E1, E3, E2, E4 |
+| fields.fire_trail | 36 | 5 | -86.111% | 8 | -77.778% | expected structural difference: E1, E3, E2, E4 |
+| roots.with_applications | 55 | 45 | -18.182% | 52 | -5.455% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_1_applications | 47 | 38 | -19.149% | 44 | -6.383% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_2_applications | 1 | 0 | -100.000% | 0 | -100.000% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_5_applications | 2 | 1 | -50.000% | 1 | -50.000% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_6_applications | 4 | 3 | -25.000% | 5 | +25.000% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_7_applications | 1 | 2 | +100.000% | 1 | 0% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_4_applications | 0 | 1 | new (ref=0) | 1 | new (ref=0) | expected structural difference: E1, E3, E2, E4 |
 
 ### shuffle-5 (probe)
 
@@ -3027,44 +3047,44 @@ Recipes: `volcano5{lava_blob:[ice2,electric3,fire3]}`
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 760.740282 | 742.832554 | -2.354% | 784.020058 | +3.060% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| damage_capped | 701.506426 | 720 | +2.636% | 707.806426 | +0.898% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| kills | 5 | 6 | +20.000% | 5 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| mana | 10 | 12 | +20.000% | 10 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| damage | 760.740282 | 740.312554 | -2.685% | 782.130058 | +2.812% | expected structural difference: E1, E3, E2, E4 |
+| damage_capped | 701.506426 | 720 | +2.636% | 707.806426 | +0.898% | expected structural difference: E1, E3, E2, E4 |
+| kills | 5 | 6 | +20.000% | 5 | 0% | expected structural difference: E1, E3, E2, E4 |
+| mana | 10 | 12 | +20.000% | 10 | 0% | expected structural difference: E1, E3, E2, E4 |
 | mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
 | mana_mark | 0 | 0 | 0% | 0 | 0% | equal |
-| stones | 5 | 6 | +20.000% | 5 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| stones | 5 | 6 | +20.000% | 5 | 0% | expected structural difference: E1, E3, E2, E4 |
 | frozen | 0 | 0 | 0% | 0 | 0% | equal |
 | nova_frozen | 0 | 0 | 0% | 0 | 0% | equal |
 | shards | 0 | 0 | 0% | 0 | 0% | equal |
 | max_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_status_gen | 1 | 1 | 0% | 1 | 0% | equal |
 | max_budget_used | 7 | 7 | 0% | 7 | 0% | equal |
-| applications | 90 | 80 | -11.111% | 93 | +3.333% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| applications | 90 | 79 | -12.222% | 90 | 0% | expected structural difference: E1, E3, E2, E4 |
 | rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
-| spread_status | 26 | 24 | -7.692% | 30 | +15.385% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| status_instances | 10 | 10 | 0% | 10 | 0% | equal |
+| spread_status | 26 | 24 | -7.692% | 30 | +15.385% | expected structural difference: E1, E3, E2, E4 |
+| status_instances | 10 | 11 | +10.000% | 10 | 0% | expected structural difference: E1, E3, E2, E4 |
 | pushed_tiles | 0 | 0 | 0% | 0 | 0% | equal |
-| seconds | 14 | 10.9 | -22.143% | 14 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure; tolerance (floating arithmetic) |
-| host_attacks | 8 | 7 | -12.500% | 8 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| seconds | 14 | 10.25 | -26.786% | 14 | 0% | expected structural difference: E1, E3, E2, E4; tolerance (floating arithmetic) |
+| host_attacks | 8 | 7 | -12.500% | 8 | 0% | expected structural difference: E1, E3, E2, E4 |
 | finite | true | true | 0 | true | 0 | equal |
-| hops.total | 15 | 13 | -13.333% | 16 | +6.667% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.lava | 502.540043 | 484.162965 | -3.657% | 522.40662 | +3.953% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.fire | 126.205254 | 123.861654 | -1.857% | 127.140363 | +0.741% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.ice | 62.523941 | 63.856391 | +2.131% | 63.697772 | +1.877% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| by_element.electric | 69.471045 | 70.951545 | +2.131% | 70.775302 | +1.877% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| statuses.burn | 19 | 19 | 0% | 21 | +10.526% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| statuses.slow | 19 | 19 | 0% | 21 | +10.526% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| hops.lav topu düşmandan düşmana zıplayarak | 15 | 13 | -13.333% | 16 | +6.667% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| fields.lava_pool | 6 | 4 | -33.333% | 5 | -16.667% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| fields.fire_trail | 36 | 6 | -83.333% | 10 | -72.222% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.with_applications | 55 | 46 | -16.364% | 55 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_1_applications | 47 | 39 | -17.021% | 47 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_2_applications | 1 | 0 | -100.000% | 0 | -100.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_5_applications | 2 | 1 | -50.000% | 1 | -50.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_6_applications | 4 | 3 | -25.000% | 5 | +25.000% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_7_applications | 1 | 2 | +100.000% | 1 | 0% | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
-| roots.using_4_applications | 0 | 1 | new (ref=0) | 1 | new (ref=0) | BUG exposure / structural mixture: E1, E3, E2, E4, B2 exposure |
+| hops.total | 15 | 13 | -13.333% | 16 | +6.667% | expected structural difference: E1, E3, E2, E4 |
+| by_element.lava | 502.540043 | 484.162965 | -3.657% | 522.40662 | +3.953% | expected structural difference: E1, E3, E2, E4 |
+| by_element.fire | 126.205254 | 121.341654 | -3.854% | 125.250363 | -0.757% | expected structural difference: E1, E3, E2, E4 |
+| by_element.ice | 62.523941 | 63.856391 | +2.131% | 63.697772 | +1.877% | expected structural difference: E1, E3, E2, E4 |
+| by_element.electric | 69.471045 | 70.951545 | +2.131% | 70.775302 | +1.877% | expected structural difference: E1, E3, E2, E4 |
+| statuses.burn | 19 | 19 | 0% | 21 | +10.526% | expected structural difference: E1, E3, E2, E4 |
+| statuses.slow | 19 | 19 | 0% | 21 | +10.526% | expected structural difference: E1, E3, E2, E4 |
+| hops.lav topu düşmandan düşmana zıplayarak | 15 | 13 | -13.333% | 16 | +6.667% | expected structural difference: E1, E3, E2, E4 |
+| fields.lava_pool | 6 | 4 | -33.333% | 5 | -16.667% | expected structural difference: E1, E3, E2, E4 |
+| fields.fire_trail | 36 | 5 | -86.111% | 8 | -77.778% | expected structural difference: E1, E3, E2, E4 |
+| roots.with_applications | 55 | 45 | -18.182% | 52 | -5.455% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_1_applications | 47 | 38 | -19.149% | 44 | -6.383% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_2_applications | 1 | 0 | -100.000% | 0 | -100.000% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_5_applications | 2 | 1 | -50.000% | 1 | -50.000% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_6_applications | 4 | 3 | -25.000% | 5 | +25.000% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_7_applications | 1 | 2 | +100.000% | 1 | 0% | expected structural difference: E1, E3, E2, E4 |
+| roots.using_4_applications | 0 | 1 | new (ref=0) | 1 | new (ref=0) | expected structural difference: E1, E3, E2, E4 |
 
 ### deep3 (probe)
 
@@ -3072,49 +3092,49 @@ Recipes: `fire5{burn:[electric5{chain:[ice5{freeze:[poison4]}]}]}`
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 718.232006 | 751.242373 | +4.596% | 704.760806 | -1.876% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| damage_capped | 693.09294 | 720 | +3.882% | 691.725635 | -0.197% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| kills | 5 | 6 | +20.000% | 4 | -20.000% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| mana | 10 | 12 | +20.000% | 8 | -20.000% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| damage | 718.232006 | 745.055773 | +3.735% | 701.862806 | -2.279% | expected structural difference: E1, E3, E2 |
+| damage_capped | 693.09294 | 718.296095 | +3.636% | 688.125635 | -0.717% | expected structural difference: E1, E3, E2 |
+| kills | 5 | 5 | 0% | 4 | -20.000% | expected structural difference: E1, E3, E2 |
+| mana | 10 | 10 | 0% | 8 | -20.000% | expected structural difference: E1, E3, E2 |
 | mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
 | mana_mark | 0 | 0 | 0% | 0 | 0% | equal |
-| stones | 5 | 6 | +20.000% | 4 | -20.000% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| stones | 5 | 5 | 0% | 4 | -20.000% | expected structural difference: E1, E3, E2 |
 | frozen | 15 | 15 | 0% | 15 | 0% | equal |
 | nova_frozen | 10 | 10 | 0% | 10 | 0% | equal |
-| shards | 2 | 2 | 0% | 2 | 0% | equal |
+| shards | 2 | 1 | -50.000% | 2 | 0% | expected structural difference: E1, E3, E2 |
 | max_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_status_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_budget_used | 9 | 9 | 0% | 9 | 0% | equal |
-| applications | 156 | 164 | +5.128% | 162 | +3.846% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| applications | 156 | 158 | +1.282% | 153 | -1.923% | expected structural difference: E1, E3, E2 |
 | rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
-| spread_status | 137 | 132 | -3.650% | 134 | -2.190% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| status_instances | 23 | 21 | -8.696% | 23 | 0% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| spread_status | 137 | 133 | -2.920% | 137 | 0% | expected structural difference: E1, E3, E2 |
+| status_instances | 23 | 21 | -8.696% | 23 | 0% | expected structural difference: E1, E3, E2 |
 | pushed_tiles | 0 | 0 | 0% | 0 | 0% | equal |
-| seconds | 14 | 13.4 | -4.286% | 14 | 0% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure; tolerance (floating arithmetic) |
+| seconds | 14 | 14 | 0% | 14 | 0% | tolerance (floating arithmetic) |
 | host_attacks | 8 | 8 | 0% | 8 | 0% | equal |
 | finite | true | true | 0 | true | 0 | equal |
-| hops.total | 27 | 25 | -7.407% | 27 | 0% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| by_element.fire | 350.1 | 376.65 | +7.584% | 345.6 | -1.285% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| by_element.electric | 257.991391 | 268.724937 | +4.160% | 247.785391 | -3.956% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| by_element.ice | 78.035815 | 72.527836 | -7.058% | 78.035815 | 0% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure; tolerance (floating arithmetic) |
-| by_element.poison | 32.1048 | 33.3396 | +3.846% | 33.3396 | +3.846% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| statuses.burn | 30 | 28 | -6.667% | 30 | 0% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| statuses.charge | 61 | 61 | 0% | 60 | -1.639% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| statuses.slow | 24 | 22 | -8.333% | 23 | -4.167% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| statuses.cold | 24 | 22 | -8.333% | 23 | -4.167% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| hops.total | 27 | 24 | -11.111% | 27 | 0% | expected structural difference: E1, E3, E2 |
+| by_element.fire | 350.1 | 364.05 | +3.985% | 329.85 | -5.784% | expected structural difference: E1, E3, E2 |
+| by_element.electric | 257.991391 | 278.930937 | +8.116% | 260.637391 | +1.026% | expected structural difference: E1, E3, E2 |
+| by_element.ice | 78.035815 | 65.030836 | -16.665% | 78.035815 | 0% | expected structural difference: E1, E3, E2; tolerance (floating arithmetic) |
+| by_element.poison | 32.1048 | 37.044 | +15.385% | 33.3396 | +3.846% | expected structural difference: E1, E3, E2 |
+| statuses.burn | 30 | 28 | -6.667% | 30 | 0% | expected structural difference: E1, E3, E2 |
+| statuses.charge | 61 | 62 | +1.639% | 61 | 0% | expected structural difference: E1, E3, E2 |
+| statuses.slow | 24 | 22 | -8.333% | 24 | 0% | expected structural difference: E1, E3, E2 |
+| statuses.cold | 24 | 22 | -8.333% | 24 | 0% | expected structural difference: E1, E3, E2 |
 | statuses.poison | 7 | 7 | 0% | 7 | 0% | equal |
-| hops.durum yandakine atlayarak | 24 | 22 | -8.333% | 24 | 0% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| hops.buz parçası düşer | 3 | 3 | 0% | 3 | 0% | equal |
-| fields.fire_trail | 62 | 14 | -77.419% | 16 | -74.194% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.with_applications | 101 | 112 | +10.891% | 106 | +4.950% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.using_1_applications | 90 | 102 | +13.333% | 95 | +5.556% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.using_2_applications | 2 | 1 | -50.000% | 1 | -50.000% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.using_5_applications | 1 | 0 | -100.000% | 1 | 0% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| hops.durum yandakine atlayarak | 24 | 22 | -8.333% | 24 | 0% | expected structural difference: E1, E3, E2 |
+| hops.buz parçası düşer | 3 | 2 | -33.333% | 3 | 0% | expected structural difference: E1, E3, E2 |
+| fields.fire_trail | 62 | 13 | -79.032% | 13 | -79.032% | expected structural difference: E1, E3, E2 |
+| roots.with_applications | 101 | 107 | +5.941% | 97 | -3.960% | expected structural difference: E1, E3, E2 |
+| roots.using_1_applications | 90 | 98 | +8.889% | 86 | -4.444% | expected structural difference: E1, E3, E2 |
+| roots.using_2_applications | 2 | 0 | -100.000% | 1 | -50.000% | expected structural difference: E1, E3, E2 |
+| roots.using_5_applications | 1 | 0 | -100.000% | 1 | 0% | expected structural difference: E1, E3, E2 |
 | roots.using_6_applications | 2 | 2 | 0% | 2 | 0% | equal |
 | roots.using_7_applications | 4 | 4 | 0% | 4 | 0% | equal |
 | roots.using_8_applications | 1 | 1 | 0% | 1 | 0% | equal |
 | roots.using_9_applications | 1 | 1 | 0% | 1 | 0% | equal |
-| roots.using_3_applications | 0 | 1 | new (ref=0) | 1 | new (ref=0) | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| roots.using_3_applications | 0 | 1 | new (ref=0) | 1 | new (ref=0) | expected structural difference: E1, E3, E2 |
 
 ### deep4 (probe)
 
@@ -3122,49 +3142,51 @@ Recipes: `fire5{burn:[electric5{chain:[ice5{freeze:[poison4{poison_tick:[blood2]
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 720.427958 | 749.61267 | +4.051% | 709.892995 | -1.462% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| damage_capped | 693.09294 | 720 | +3.882% | 693.699828 | +0.088% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| kills | 5 | 6 | +20.000% | 4 | -20.000% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| mana | 10 | 12 | +20.000% | 8 | -20.000% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| damage | 720.427958 | 755.26366 | +4.835% | 708.159879 | -1.703% | expected structural difference: E1, E3, E2 |
+| damage_capped | 693.09294 | 720 | +3.882% | 692.569428 | -0.076% | expected structural difference: E1, E3, E2 |
+| kills | 5 | 6 | +20.000% | 4 | -20.000% | expected structural difference: E1, E3, E2 |
+| mana | 10 | 12 | +20.000% | 8 | -20.000% | expected structural difference: E1, E3, E2 |
 | mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
 | mana_mark | 0 | 0 | 0% | 0 | 0% | equal |
-| stones | 5 | 6 | +20.000% | 4 | -20.000% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| frozen | 15 | 12 | -20.000% | 12 | -20.000% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| nova_frozen | 10 | 8 | -20.000% | 8 | -20.000% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| stones | 5 | 6 | +20.000% | 4 | -20.000% | expected structural difference: E1, E3, E2 |
+| frozen | 15 | 15 | 0% | 15 | 0% | equal |
+| nova_frozen | 10 | 10 | 0% | 10 | 0% | equal |
 | shards | 2 | 2 | 0% | 2 | 0% | equal |
 | max_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_status_gen | 2 | 2 | 0% | 2 | 0% | equal |
-| max_budget_used | 9 | 8 | -11.111% | 8 | -11.111% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| applications | 151 | 160 | +5.960% | 155 | +2.649% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| max_budget_used | 9 | 9 | 0% | 9 | 0% | equal |
+| applications | 151 | 156 | +3.311% | 149 | -1.325% | expected structural difference: E1, E3, E2 |
 | rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
-| spread_status | 141 | 139 | -1.418% | 137 | -2.837% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| status_instances | 26 | 23 | -11.538% | 25 | -3.846% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| spread_status | 141 | 146 | +3.546% | 146 | +3.546% | expected structural difference: E1, E3, E2 |
+| status_instances | 26 | 24 | -7.692% | 26 | 0% | expected structural difference: E1, E3, E2 |
 | pushed_tiles | 0 | 0 | 0% | 0 | 0% | equal |
-| seconds | 14 | 13.4 | -4.286% | 14 | 0% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure; tolerance (floating arithmetic) |
+| seconds | 14 | 13.4 | -4.286% | 14 | 0% | expected structural difference: E1, E3, E2; tolerance (floating arithmetic) |
 | host_attacks | 8 | 8 | 0% | 8 | 0% | equal |
 | finite | true | true | 0 | true | 0 | equal |
-| hops.total | 26 | 25 | -3.846% | 26 | 0% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| by_element.fire | 346.05 | 370.8 | +7.152% | 339.75 | -1.821% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| by_element.electric | 251.970087 | 261.164937 | +3.649% | 247.056087 | -1.950% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| by_element.ice | 72.527836 | 70.631646 | -2.614% | 70.631646 | -2.614% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| by_element.poison | 32.1048 | 33.3396 | +3.846% | 34.5744 | +7.692% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| by_element.blood | 17.775235 | 13.676487 | -23.059% | 17.880863 | +0.594% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| statuses.burn | 28 | 27 | -3.571% | 27 | -3.571% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| statuses.charge | 59 | 60 | +1.695% | 59 | 0% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| statuses.slow | 22 | 21 | -4.545% | 21 | -4.545% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| statuses.cold | 22 | 21 | -4.545% | 21 | -4.545% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| statuses.poison | 7 | 5 | -28.571% | 5 | -28.571% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| statuses.bleed | 12 | 13 | +8.333% | 13 | +8.333% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| hops.durum yandakine atlayarak | 23 | 22 | -4.348% | 23 | 0% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| hops.total | 26 | 25 | -3.846% | 27 | +3.846% | expected structural difference: E1, E3, E2 |
+| by_element.fire | 346.05 | 358.2 | +3.511% | 321.75 | -7.022% | expected structural difference: E1, E3, E2 |
+| by_element.electric | 251.970087 | 276.284937 | +9.650% | 255.345391 | +1.340% | expected structural difference: E1, E3, E2 |
+| by_element.ice | 72.527836 | 72.527836 | 0% | 76.139626 | +4.980% | tolerance (floating arithmetic); expected structural difference: E1, E3, E2 |
+| by_element.poison | 32.1048 | 34.5744 | +7.692% | 37.044 | +15.385% | expected structural difference: E1, E3, E2 |
+| by_element.blood | 17.775235 | 13.676487 | -23.059% | 17.880863 | +0.594% | expected structural difference: E1, E3, E2 |
+| statuses.burn | 28 | 28 | 0% | 29 | +3.571% | expected structural difference: E1, E3, E2 |
+| statuses.charge | 59 | 62 | +5.085% | 60 | +1.695% | expected structural difference: E1, E3, E2 |
+| statuses.slow | 22 | 22 | 0% | 23 | +4.545% | expected structural difference: E1, E3, E2 |
+| statuses.cold | 22 | 22 | 0% | 23 | +4.545% | expected structural difference: E1, E3, E2 |
+| statuses.poison | 7 | 7 | 0% | 7 | 0% | equal |
+| statuses.bleed | 12 | 13 | +8.333% | 13 | +8.333% | expected structural difference: E1, E3, E2 |
+| hops.durum yandakine atlayarak | 23 | 22 | -4.348% | 24 | +4.348% | expected structural difference: E1, E3, E2 |
 | hops.buz parçası düşer | 3 | 3 | 0% | 3 | 0% | equal |
-| fields.fire_trail | 62 | 14 | -77.419% | 16 | -74.194% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.with_applications | 99 | 111 | +12.121% | 105 | +6.061% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.using_1_applications | 88 | 101 | +14.773% | 94 | +6.818% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
-| roots.using_2_applications | 3 | 2 | -33.333% | 3 | 0% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| fields.fire_trail | 62 | 13 | -79.032% | 13 | -79.032% | expected structural difference: E1, E3, E2 |
+| roots.with_applications | 99 | 104 | +5.051% | 95 | -4.040% | expected structural difference: E1, E3, E2 |
+| roots.using_1_applications | 88 | 94 | +6.818% | 84 | -4.545% | expected structural difference: E1, E3, E2 |
+| roots.using_2_applications | 3 | 1 | -66.667% | 2 | -33.333% | expected structural difference: E1, E3, E2 |
 | roots.using_6_applications | 2 | 2 | 0% | 2 | 0% | equal |
-| roots.using_7_applications | 4 | 5 | +25.000% | 5 | +25.000% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| roots.using_7_applications | 4 | 4 | 0% | 4 | 0% | equal |
 | roots.using_8_applications | 1 | 1 | 0% | 1 | 0% | equal |
-| roots.using_9_applications | 1 | 0 | -100.000% | 0 | -100.000% | BUG exposure / structural mixture: E1, E3, E2, B2 exposure |
+| roots.using_9_applications | 1 | 1 | 0% | 1 | 0% | equal |
+| roots.using_3_applications | 0 | 1 | new (ref=0) | 0 | 0% | expected structural difference: E1, E3, E2 |
+| roots.using_4_applications | 0 | 0 | 0% | 1 | new (ref=0) | expected structural difference: E1, E3, E2 |
 
 ### summon-loop-volcano (probe)
 
@@ -3372,8 +3394,8 @@ Actions: `[{"kind":"event","recipe":"water3{water_hit:[electric3]}","tower":0,"t
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 18 | 29.91645 | +66.203% | 18 | 0% | BUG B1 |
-| damage_capped | 18 | 29.91645 | +66.203% | 18 | 0% | BUG B1 |
+| damage | 18 | 18 | 0% | 18 | 0% | equal |
+| damage_capped | 18 | 18 | 0% | 18 | 0% | equal |
 | kills | 0 | 0 | 0% | 0 | 0% | equal |
 | mana | 0 | 0 | 0% | 0 | 0% | equal |
 | mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
@@ -3382,25 +3404,23 @@ Actions: `[{"kind":"event","recipe":"water3{water_hit:[electric3]}","tower":0,"t
 | frozen | 0 | 0 | 0% | 0 | 0% | equal |
 | nova_frozen | 0 | 0 | 0% | 0 | 0% | equal |
 | shards | 0 | 0 | 0% | 0 | 0% | equal |
-| max_gen | 0 | 1 | new (ref=0) | 0 | 0% | BUG B1 |
-| max_status_gen | 0 | 1 | new (ref=0) | 0 | 0% | BUG B1 |
-| max_budget_used | 1 | 5 | +400.000% | 1 | 0% | BUG B1 |
-| applications | 1 | 5 | +400.000% | 1 | 0% | BUG B1 |
+| max_gen | 0 | 0 | 0% | 0 | 0% | equal |
+| max_status_gen | 0 | 0 | 0% | 0 | 0% | equal |
+| max_budget_used | 1 | 1 | 0% | 1 | 0% | equal |
+| applications | 1 | 1 | 0% | 1 | 0% | equal |
 | rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
-| spread_status | 0 | 2 | new (ref=0) | 0 | 0% | BUG B1 |
-| status_instances | 1 | 3 | +200.000% | 1 | 0% | BUG B1 |
-| pushed_tiles | 0.35 | 0.581709 | +66.203% | 0.35 | 0% | BUG B1 |
+| spread_status | 0 | 0 | 0% | 0 | 0% | equal |
+| status_instances | 1 | 1 | 0% | 1 | 0% | equal |
+| pushed_tiles | 0.35 | 0.35 | 0% | 0.35 | 0% | equal |
 | seconds | 0 | 0 | 0% | 0 | 0% | equal |
 | host_attacks | 0 | 0 | 0% | 0 | 0% | equal |
 | finite | true | true | 0 | true | 0 | equal |
-| hops.total | 0 | 2 | new (ref=0) | 0 | 0% | BUG B1 |
-| by_element.water | 11.7 | 19.445692 | +66.202% | 11.7 | 0% | BUG B1; tolerance (floating arithmetic) |
-| by_element.electric | 6.3 | 10.470757 | +66.203% | 6.3 | 0% | BUG B1 |
-| statuses.wet | 1 | 3 | +200.000% | 1 | 0% | BUG B1 |
+| hops.total | 0 | 0 | 0% | 0 | 0% | equal |
+| by_element.water | 11.7 | 11.7 | 0% | 11.7 | 0% | tolerance (floating arithmetic) |
+| by_element.electric | 6.3 | 6.3 | 0% | 6.3 | 0% | equal |
+| statuses.wet | 1 | 1 | 0% | 1 | 0% | equal |
 | roots.with_applications | 1 | 1 | 0% | 1 | 0% | equal |
-| roots.using_1_applications | 1 | 0 | -100.000% | 1 | 0% | BUG B1 |
-| hops.mermi sekerek | 0 | 2 | new (ref=0) | 0 | 0% | BUG B1 |
-| roots.using_5_applications | 0 | 1 | new (ref=0) | 0 | 0% | BUG B1 |
+| roots.using_1_applications | 1 | 1 | 0% | 1 | 0% | equal |
 
 ### boundary-pierce (direct)
 
@@ -3467,7 +3487,6 @@ Actions: `[{"kind":"position","target":0,"value":6.25},{"kind":"status","recipe"
 | hops.total | 0 | 0 | 0% | 0 | 0% | equal |
 | statuses.burn | 1 | 1 | 0% | 1 | 0% | equal |
 | roots.with_applications | 0 | 0 | 0% | 0 | 0% | equal |
-| fields.fire_trail | 0 | 1 | new (ref=0) | 1 | new (ref=0) | BUG B2 |
 
 ### frozen-death-shards (direct)
 
@@ -3515,8 +3534,8 @@ Actions: `[{"kind":"event","recipe":"mana1","tower":0,"target":0}]`
 | damage | 4.05 | 4.05 | 0% | 4.05 | 0% | equal |
 | damage_capped | 1 | 1 | 0% | 1 | 0% | equal |
 | kills | 1 | 1 | 0% | 1 | 0% | equal |
-| mana | 2 | 4.43 | +121.500% | 4.43 | +121.500% | BUG B3 (Python reference) |
-| mana_siphon | 0 | 2.43 | new (ref=0) | 2.43 | new (ref=0) | BUG B3 (Python reference) |
+| mana | 2.6 | 2.6 | 0% | 2.6 | 0% | equal |
+| mana_siphon | 0.6 | 0.6 | 0% | 0.6 | 0% | equal |
 | mana_mark | 0 | 0 | 0% | 0 | 0% | equal |
 | stones | 1 | 1 | 0% | 1 | 0% | equal |
 | frozen | 0 | 0 | 0% | 0 | 0% | equal |
@@ -3547,8 +3566,8 @@ Actions: `[{"kind":"event","recipe":"mana3","tower":0,"target":0}]`
 | damage | 9 | 9 | 0% | 9 | 0% | equal |
 | damage_capped | 1 | 1 | 0% | 1 | 0% | equal |
 | kills | 1 | 1 | 0% | 1 | 0% | equal |
-| mana | 2 | 8.75 | +337.500% | 8.75 | +337.500% | BUG B3 (Python reference) |
-| mana_siphon | 0 | 6.75 | new (ref=0) | 6.75 | new (ref=0) | BUG B3 (Python reference) |
+| mana | 2.75 | 2.75 | 0% | 2.75 | 0% | equal |
+| mana_siphon | 0.75 | 0.75 | 0% | 0.75 | 0% | equal |
 | mana_mark | 0 | 0 | 0% | 0 | 0% | equal |
 | stones | 1 | 1 | 0% | 1 | 0% | equal |
 | frozen | 0 | 0 | 0% | 0 | 0% | equal |
@@ -3613,9 +3632,9 @@ Actions: `[{"kind":"status","recipe":"mana5","status":"mana_mark","tower":0,"rep
 | damage | 39.7 | 39.7 | 0% | 39.7 | 0% | equal |
 | damage_capped | 30.7 | 30.7 | 0% | 30.7 | 0% | tolerance (floating arithmetic) |
 | kills | 1 | 1 | 0% | 1 | 0% | equal |
-| mana | 13.91 | 13.91 | 0% | 13.91 | 0% | equal |
+| mana | 11.21 | 11.21 | 0% | 11.21 | 0% | equal |
 | mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
-| mana_mark | 11.91 | 11.91 | 0% | 11.91 | 0% | equal |
+| mana_mark | 9.21 | 9.21 | 0% | 9.21 | 0% | equal |
 | stones | 3 | 3 | 0% | 3 | 0% | equal |
 | frozen | 0 | 0 | 0% | 0 | 0% | equal |
 | nova_frozen | 0 | 0 | 0% | 0 | 0% | equal |
@@ -3646,8 +3665,8 @@ Actions: `[{"kind":"event","recipe":"fire5{fire_hit:[electric5{chain:[ice5{chill
 
 | Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
 |---|---:|---:|---:|---:|---:|---|
-| damage | 505.658879 | 518.70664 | +2.580% | 505.658879 | 0% | BUG exposure / structural mixture: E2, E4, B1 exposure, B2 exposure; tolerance (floating arithmetic) |
-| damage_capped | 505.658879 | 518.70664 | +2.580% | 505.658879 | 0% | BUG exposure / structural mixture: E2, E4, B1 exposure, B2 exposure; tolerance (floating arithmetic) |
+| damage | 505.658879 | 505.658879 | 0% | 505.658879 | 0% | tolerance (floating arithmetic) |
+| damage_capped | 505.658879 | 505.658879 | 0% | 505.658879 | 0% | tolerance (floating arithmetic) |
 | kills | 0 | 0 | 0% | 0 | 0% | equal |
 | mana | 0 | 0 | 0% | 0 | 0% | equal |
 | mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
@@ -3659,38 +3678,392 @@ Actions: `[{"kind":"event","recipe":"fire5{fire_hit:[electric5{chain:[ice5{chill
 | max_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_status_gen | 2 | 2 | 0% | 2 | 0% | equal |
 | max_budget_used | 16 | 16 | 0% | 16 | 0% | equal |
-| applications | 74 | 75 | +1.351% | 74 | 0% | BUG exposure / structural mixture: E2, E4, B1 exposure, B2 exposure |
-| rejected_events | 21 | 19 | -9.524% | 19 | -9.524% | BUG exposure / structural mixture: E2, E4, B1 exposure, B2 exposure |
-| spread_status | 87 | 88 | +1.149% | 87 | 0% | BUG exposure / structural mixture: E2, E4, B1 exposure, B2 exposure |
-| status_instances | 15 | 14 | -6.667% | 15 | 0% | BUG exposure / structural mixture: E2, E4, B1 exposure, B2 exposure |
+| applications | 74 | 74 | 0% | 74 | 0% | equal |
+| rejected_events | 21 | 19 | -9.524% | 19 | -9.524% | expected structural difference: E2, E4 |
+| spread_status | 87 | 87 | 0% | 87 | 0% | equal |
+| status_instances | 15 | 15 | 0% | 15 | 0% | equal |
 | pushed_tiles | 1.004457 | 1.004457 | 0% | 1.004457 | 0% | tolerance (floating arithmetic) |
 | seconds | 4 | 4 | 0% | 4 | 0% | equal |
 | host_attacks | 0 | 0 | 0% | 0 | 0% | equal |
 | finite | true | true | 0 | true | 0 | equal |
 | hops.total | 13 | 13 | 0% | 13 | 0% | equal |
 | by_element.fire | 119.209984 | 119.209984 | 0% | 119.209984 | 0% | equal |
-| by_element.electric | 83.548363 | 83.976924 | +0.513% | 83.548363 | 0% | BUG exposure / structural mixture: E2, E4, B1 exposure, B2 exposure |
+| by_element.electric | 83.548363 | 83.548363 | 0% | 83.548363 | 0% | equal |
 | by_element.impact | 58.683131 | 58.683131 | 0% | 58.683131 | 0% | tolerance (floating arithmetic) |
-| by_element.ice | 13.322174 | 13.417161 | +0.713% | 13.322174 | 0% | BUG exposure / structural mixture: E2, E4, B1 exposure, B2 exposure; tolerance (floating arithmetic) |
+| by_element.ice | 13.322174 | 13.322174 | 0% | 13.322174 | 0% | tolerance (floating arithmetic) |
 | by_element.physical | 5.502944 | 5.502944 | 0% | 5.502944 | 0% | tolerance (floating arithmetic) |
-| by_element.water | 9.849226 | 9.986428 | +1.393% | 9.849226 | 0% | BUG exposure / structural mixture: E2, E4, B1 exposure, B2 exposure; tolerance (floating arithmetic) |
-| by_element.blood | 5.715385 | 6.565835 | +14.880% | 5.715385 | 0% | BUG exposure / structural mixture: E2, E4, B1 exposure, B2 exposure; tolerance (floating arithmetic) |
-| by_element.poison | 209.827672 | 221.364232 | +5.498% | 209.827672 | 0% | BUG exposure / structural mixture: E2, E4, B1 exposure, B2 exposure; tolerance (floating arithmetic) |
+| by_element.water | 9.849226 | 9.849226 | 0% | 9.849226 | 0% | tolerance (floating arithmetic) |
+| by_element.blood | 5.715385 | 5.715385 | 0% | 5.715385 | 0% | tolerance (floating arithmetic) |
+| by_element.poison | 209.827672 | 209.827672 | 0% | 209.827672 | 0% | tolerance (floating arithmetic) |
 | statuses.burn | 15 | 15 | 0% | 15 | 0% | equal |
 | statuses.charge | 7 | 7 | 0% | 7 | 0% | equal |
 | statuses.slow | 11 | 11 | 0% | 11 | 0% | equal |
 | statuses.poison | 27 | 27 | 0% | 27 | 0% | equal |
-| statuses.bleed | 17 | 18 | +5.882% | 17 | 0% | BUG exposure / structural mixture: E2, E4, B1 exposure, B2 exposure |
+| statuses.bleed | 17 | 17 | 0% | 17 | 0% | equal |
 | statuses.cold | 3 | 3 | 0% | 3 | 0% | equal |
 | statuses.shred | 3 | 3 | 0% | 3 | 0% | equal |
 | statuses.wet | 8 | 8 | 0% | 8 | 0% | equal |
 | hops.mermi sekerek | 3 | 3 | 0% | 3 | 0% | equal |
 | hops.parça | 2 | 2 | 0% | 2 | 0% | equal |
 | hops.durum yandakine atlayarak | 8 | 8 | 0% | 8 | 0% | equal |
-| roots.with_applications | 43 | 44 | +2.326% | 43 | 0% | BUG exposure / structural mixture: E2, E4, B1 exposure, B2 exposure |
-| roots.using_1_applications | 38 | 39 | +2.632% | 38 | 0% | BUG exposure / structural mixture: E2, E4, B1 exposure, B2 exposure |
+| roots.with_applications | 43 | 43 | 0% | 43 | 0% | equal |
+| roots.using_1_applications | 38 | 38 | 0% | 38 | 0% | equal |
 | roots.using_5_applications | 4 | 4 | 0% | 4 | 0% | equal |
 | roots.using_16_applications | 1 | 1 | 0% | 1 | 0% | equal |
+
+### cap-same-node (direct)
+
+Actions: `[{"kind":"event","recipe":"mana1","target":0,"tower":0},{"kind":"event","recipe":"mana1","target":1,"tower":0}]`
+
+| Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
+|---|---:|---:|---:|---:|---:|---|
+| damage | 8.1 | 8.1 | 0% | 8.1 | 0% | equal |
+| damage_capped | 8.1 | 8.1 | 0% | 8.1 | 0% | equal |
+| kills | 0 | 0 | 0% | 0 | 0% | equal |
+| mana | 3.09 | 3.09 | 0% | 3.09 | 0% | equal |
+| mana_siphon | 3.09 | 3.09 | 0% | 3.09 | 0% | equal |
+| mana_mark | 0 | 0 | 0% | 0 | 0% | equal |
+| stones | 0 | 0 | 0% | 0 | 0% | equal |
+| frozen | 0 | 0 | 0% | 0 | 0% | equal |
+| nova_frozen | 0 | 0 | 0% | 0 | 0% | equal |
+| shards | 0 | 0 | 0% | 0 | 0% | equal |
+| max_gen | 0 | 0 | 0% | 0 | 0% | equal |
+| max_status_gen | 0 | 0 | 0% | 0 | 0% | equal |
+| max_budget_used | 1 | 1 | 0% | 1 | 0% | equal |
+| applications | 2 | 2 | 0% | 2 | 0% | equal |
+| rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
+| spread_status | 0 | 0 | 0% | 0 | 0% | equal |
+| status_instances | 0 | 0 | 0% | 0 | 0% | equal |
+| pushed_tiles | 0 | 0 | 0% | 0 | 0% | equal |
+| seconds | 0 | 0 | 0% | 0 | 0% | equal |
+| host_attacks | 0 | 0 | 0% | 0 | 0% | equal |
+| finite | true | true | 0 | true | 0 | equal |
+| hops.total | 0 | 0 | 0% | 0 | 0% | equal |
+| by_element.arcane | 8.1 | 8.1 | 0% | 8.1 | 0% | equal |
+| roots.with_applications | 2 | 2 | 0% | 2 | 0% | equal |
+| roots.using_1_applications | 2 | 2 | 0% | 2 | 0% | equal |
+
+### cap-distinct-towers (direct)
+
+Actions: `[{"kind":"event","recipe":"mana1","target":0,"tower":0},{"kind":"event","recipe":"mana1","target":1,"tower":1}]`
+
+| Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
+|---|---:|---:|---:|---:|---:|---|
+| damage | 8.1 | 8.1 | 0% | 8.1 | 0% | equal |
+| damage_capped | 8.1 | 8.1 | 0% | 8.1 | 0% | equal |
+| kills | 0 | 0 | 0% | 0 | 0% | equal |
+| mana | 4.86 | 4.86 | 0% | 4.86 | 0% | tolerance (floating arithmetic) |
+| mana_siphon | 4.86 | 4.86 | 0% | 4.86 | 0% | tolerance (floating arithmetic) |
+| mana_mark | 0 | 0 | 0% | 0 | 0% | equal |
+| stones | 0 | 0 | 0% | 0 | 0% | equal |
+| frozen | 0 | 0 | 0% | 0 | 0% | equal |
+| nova_frozen | 0 | 0 | 0% | 0 | 0% | equal |
+| shards | 0 | 0 | 0% | 0 | 0% | equal |
+| max_gen | 0 | 0 | 0% | 0 | 0% | equal |
+| max_status_gen | 0 | 0 | 0% | 0 | 0% | equal |
+| max_budget_used | 1 | 1 | 0% | 1 | 0% | equal |
+| applications | 2 | 2 | 0% | 2 | 0% | equal |
+| rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
+| spread_status | 0 | 0 | 0% | 0 | 0% | equal |
+| status_instances | 0 | 0 | 0% | 0 | 0% | equal |
+| pushed_tiles | 0 | 0 | 0% | 0 | 0% | equal |
+| seconds | 0 | 0 | 0% | 0 | 0% | equal |
+| host_attacks | 0 | 0 | 0% | 0 | 0% | equal |
+| finite | true | true | 0 | true | 0 | equal |
+| hops.total | 0 | 0 | 0% | 0 | 0% | equal |
+| by_element.arcane | 8.1 | 8.1 | 0% | 8.1 | 0% | equal |
+| roots.with_applications | 2 | 2 | 0% | 2 | 0% | equal |
+| roots.using_1_applications | 2 | 2 | 0% | 2 | 0% | equal |
+
+### cap-next-second (direct)
+
+Actions: `[{"kind":"event","recipe":"mana1","target":0,"tower":0},{"kind":"tick","dt":1},{"kind":"event","recipe":"mana1","target":1,"tower":0}]`
+
+| Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
+|---|---:|---:|---:|---:|---:|---|
+| damage | 8.1 | 8.1 | 0% | 8.1 | 0% | equal |
+| damage_capped | 8.1 | 8.1 | 0% | 8.1 | 0% | equal |
+| kills | 0 | 0 | 0% | 0 | 0% | equal |
+| mana | 4.86 | 4.86 | 0% | 4.86 | 0% | tolerance (floating arithmetic) |
+| mana_siphon | 4.86 | 4.86 | 0% | 4.86 | 0% | tolerance (floating arithmetic) |
+| mana_mark | 0 | 0 | 0% | 0 | 0% | equal |
+| stones | 0 | 0 | 0% | 0 | 0% | equal |
+| frozen | 0 | 0 | 0% | 0 | 0% | equal |
+| nova_frozen | 0 | 0 | 0% | 0 | 0% | equal |
+| shards | 0 | 0 | 0% | 0 | 0% | equal |
+| max_gen | 0 | 0 | 0% | 0 | 0% | equal |
+| max_status_gen | 0 | 0 | 0% | 0 | 0% | equal |
+| max_budget_used | 1 | 1 | 0% | 1 | 0% | equal |
+| applications | 2 | 2 | 0% | 2 | 0% | equal |
+| rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
+| spread_status | 0 | 0 | 0% | 0 | 0% | equal |
+| status_instances | 0 | 0 | 0% | 0 | 0% | equal |
+| pushed_tiles | 0 | 0 | 0% | 0 | 0% | equal |
+| seconds | 1 | 1 | 0% | 1 | 0% | equal |
+| host_attacks | 0 | 0 | 0% | 0 | 0% | equal |
+| finite | true | true | 0 | true | 0 | equal |
+| hops.total | 0 | 0 | 0% | 0 | 0% | equal |
+| by_element.arcane | 8.1 | 8.1 | 0% | 8.1 | 0% | equal |
+| roots.with_applications | 2 | 2 | 0% | 2 | 0% | equal |
+| roots.using_1_applications | 2 | 2 | 0% | 2 | 0% | equal |
+
+### mark-cap-distinct-towers (direct)
+
+Actions: `[{"kind":"position","target":0,"value":6},{"kind":"position","target":1,"value":16},{"kind":"status","recipe":"mana3","status":"mana_mark","target":0,"tower":0},{"kind":"status","recipe":"mana3","status":"mana_mark","target":1,"tower":1},{"kind":"damage","target":0,"amount":20,"element":"physical"},{"kind":"damage","target":1,"amount":20,"element":"physical"}]`
+
+| Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
+|---|---:|---:|---:|---:|---:|---|
+| damage | 36 | 36 | 0% | 36 | 0% | equal |
+| damage_capped | 36 | 36 | 0% | 36 | 0% | equal |
+| kills | 0 | 0 | 0% | 0 | 0% | equal |
+| mana | 6.3 | 6.3 | 0% | 6.3 | 0% | tolerance (floating arithmetic) |
+| mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
+| mana_mark | 6.3 | 6.3 | 0% | 6.3 | 0% | tolerance (floating arithmetic) |
+| stones | 0 | 0 | 0% | 0 | 0% | equal |
+| frozen | 0 | 0 | 0% | 0 | 0% | equal |
+| nova_frozen | 0 | 0 | 0% | 0 | 0% | equal |
+| shards | 0 | 0 | 0% | 0 | 0% | equal |
+| max_gen | 0 | 0 | 0% | 0 | 0% | equal |
+| max_status_gen | 0 | 0 | 0% | 0 | 0% | equal |
+| max_budget_used | 0 | 0 | 0% | 0 | 0% | equal |
+| applications | 0 | 0 | 0% | 0 | 0% | equal |
+| rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
+| spread_status | 0 | 0 | 0% | 0 | 0% | equal |
+| status_instances | 2 | 2 | 0% | 2 | 0% | equal |
+| pushed_tiles | 0 | 0 | 0% | 0 | 0% | equal |
+| seconds | 0 | 0 | 0% | 0 | 0% | equal |
+| host_attacks | 0 | 0 | 0% | 0 | 0% | equal |
+| finite | true | true | 0 | true | 0 | equal |
+| hops.total | 0 | 0 | 0% | 0 | 0% | equal |
+| by_element.physical | 36 | 36 | 0% | 36 | 0% | equal |
+| statuses.mana_mark | 2 | 2 | 0% | 2 | 0% | equal |
+| roots.with_applications | 0 | 0 | 0% | 0 | 0% | equal |
+
+### mark-cap-same-tower (direct)
+
+Actions: `[{"kind":"position","target":0,"value":6},{"kind":"position","target":1,"value":16},{"kind":"status","recipe":"mana3","status":"mana_mark","target":0,"tower":0},{"kind":"status","recipe":"mana3","status":"mana_mark","target":1,"tower":0},{"kind":"damage","target":0,"amount":20,"element":"physical"},{"kind":"damage","target":1,"amount":20,"element":"physical"}]`
+
+| Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
+|---|---:|---:|---:|---:|---:|---|
+| damage | 36 | 36 | 0% | 36 | 0% | equal |
+| damage_capped | 36 | 36 | 0% | 36 | 0% | equal |
+| kills | 0 | 0 | 0% | 0 | 0% | equal |
+| mana | 6.3 | 6.3 | 0% | 6.3 | 0% | tolerance (floating arithmetic) |
+| mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
+| mana_mark | 6.3 | 6.3 | 0% | 6.3 | 0% | tolerance (floating arithmetic) |
+| stones | 0 | 0 | 0% | 0 | 0% | equal |
+| frozen | 0 | 0 | 0% | 0 | 0% | equal |
+| nova_frozen | 0 | 0 | 0% | 0 | 0% | equal |
+| shards | 0 | 0 | 0% | 0 | 0% | equal |
+| max_gen | 0 | 0 | 0% | 0 | 0% | equal |
+| max_status_gen | 0 | 0 | 0% | 0 | 0% | equal |
+| max_budget_used | 0 | 0 | 0% | 0 | 0% | equal |
+| applications | 0 | 0 | 0% | 0 | 0% | equal |
+| rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
+| spread_status | 0 | 0 | 0% | 0 | 0% | equal |
+| status_instances | 2 | 2 | 0% | 2 | 0% | equal |
+| pushed_tiles | 0 | 0 | 0% | 0 | 0% | equal |
+| seconds | 0 | 0 | 0% | 0 | 0% | equal |
+| host_attacks | 0 | 0 | 0% | 0 | 0% | equal |
+| finite | true | true | 0 | true | 0 | equal |
+| hops.total | 0 | 0 | 0% | 0 | 0% | equal |
+| by_element.physical | 36 | 36 | 0% | 36 | 0% | equal |
+| statuses.mana_mark | 2 | 2 | 0% | 2 | 0% | equal |
+| roots.with_applications | 0 | 0 | 0% | 0 | 0% | equal |
+
+### cap-shared-node-channels (direct)
+
+Actions: `[{"kind":"event","recipe":"mana3","target":0},{"kind":"event","recipe":"mana3","target":0}]`
+
+| Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
+|---|---:|---:|---:|---:|---:|---|
+| damage | 18 | 18 | 0% | 18 | 0% | equal |
+| damage_capped | 18 | 18 | 0% | 18 | 0% | equal |
+| kills | 0 | 0 | 0% | 0 | 0% | equal |
+| mana | 9.675 | 9.675 | 0% | 9.675 | 0% | equal |
+| mana_siphon | 7.875 | 7.875 | 0% | 7.875 | 0% | equal |
+| mana_mark | 1.8 | 1.8 | 0% | 1.8 | 0% | equal |
+| stones | 0 | 0 | 0% | 0 | 0% | equal |
+| frozen | 0 | 0 | 0% | 0 | 0% | equal |
+| nova_frozen | 0 | 0 | 0% | 0 | 0% | equal |
+| shards | 0 | 0 | 0% | 0 | 0% | equal |
+| max_gen | 0 | 0 | 0% | 0 | 0% | equal |
+| max_status_gen | 0 | 0 | 0% | 0 | 0% | equal |
+| max_budget_used | 1 | 1 | 0% | 1 | 0% | equal |
+| applications | 2 | 2 | 0% | 2 | 0% | equal |
+| rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
+| spread_status | 0 | 0 | 0% | 0 | 0% | equal |
+| status_instances | 1 | 1 | 0% | 1 | 0% | equal |
+| pushed_tiles | 0 | 0 | 0% | 0 | 0% | equal |
+| seconds | 0 | 0 | 0% | 0 | 0% | equal |
+| host_attacks | 0 | 0 | 0% | 0 | 0% | equal |
+| finite | true | true | 0 | true | 0 | equal |
+| hops.total | 0 | 0 | 0% | 0 | 0% | equal |
+| by_element.arcane | 18 | 18 | 0% | 18 | 0% | equal |
+| statuses.mana_mark | 2 | 2 | 0% | 2 | 0% | equal |
+| roots.with_applications | 2 | 2 | 0% | 2 | 0% | equal |
+| roots.using_1_applications | 2 | 2 | 0% | 2 | 0% | equal |
+
+### siphon-two-nodes (direct)
+
+Actions: `[{"kind":"event","recipe":"fire1{fire_hit:[mana1,mana1]}","tower":0,"target":0}]`
+
+| Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
+|---|---:|---:|---:|---:|---:|---|
+| damage | 13.2525 | 13.2525 | 0% | 13.2525 | 0% | tolerance (floating arithmetic) |
+| damage_capped | 13.2525 | 13.2525 | 0% | 13.2525 | 0% | tolerance (floating arithmetic) |
+| kills | 0 | 0 | 0% | 0 | 0% | equal |
+| mana | 4.658025 | 4.658025 | 0% | 4.658025 | 0% | equal |
+| mana_siphon | 4.658025 | 4.658025 | 0% | 4.658025 | 0% | equal |
+| mana_mark | 0 | 0 | 0% | 0 | 0% | equal |
+| stones | 0 | 0 | 0% | 0 | 0% | equal |
+| frozen | 0 | 0 | 0% | 0 | 0% | equal |
+| nova_frozen | 0 | 0 | 0% | 0 | 0% | equal |
+| shards | 0 | 0 | 0% | 0 | 0% | equal |
+| max_gen | 0 | 0 | 0% | 0 | 0% | equal |
+| max_status_gen | 0 | 0 | 0% | 0 | 0% | equal |
+| max_budget_used | 1 | 1 | 0% | 1 | 0% | equal |
+| applications | 1 | 1 | 0% | 1 | 0% | equal |
+| rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
+| spread_status | 0 | 0 | 0% | 0 | 0% | equal |
+| status_instances | 0 | 0 | 0% | 0 | 0% | equal |
+| pushed_tiles | 0 | 0 | 0% | 0 | 0% | equal |
+| seconds | 0 | 0 | 0% | 0 | 0% | equal |
+| host_attacks | 0 | 0 | 0% | 0 | 0% | equal |
+| finite | true | true | 0 | true | 0 | equal |
+| hops.total | 0 | 0 | 0% | 0 | 0% | equal |
+| by_element.fire | 9 | 9 | 0% | 9 | 0% | equal |
+| by_element.arcane | 4.2525 | 4.2525 | 0% | 4.2525 | 0% | tolerance (floating arithmetic) |
+| roots.with_applications | 1 | 1 | 0% | 1 | 0% | equal |
+| roots.using_1_applications | 1 | 1 | 0% | 1 | 0% | equal |
+
+### mark-overkill (direct)
+
+Actions: `[{"kind":"status","recipe":"mana5","status":"mana_mark","tower":0,"repeat":1,"target":0},{"kind":"damage","target":0,"amount":1000,"element":"physical"}]`
+
+| Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
+|---|---:|---:|---:|---:|---:|---|
+| damage | 900 | 900 | 0% | 900 | 0% | equal |
+| damage_capped | 1 | 1 | 0% | 1 | 0% | equal |
+| kills | 1 | 1 | 0% | 1 | 0% | equal |
+| mana | 2.3 | 2.3 | 0% | 2.3 | 0% | equal |
+| mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
+| mana_mark | 0.3 | 0.3 | 0% | 0.3 | 0% | equal |
+| stones | 3 | 3 | 0% | 3 | 0% | equal |
+| frozen | 0 | 0 | 0% | 0 | 0% | equal |
+| nova_frozen | 0 | 0 | 0% | 0 | 0% | equal |
+| shards | 0 | 0 | 0% | 0 | 0% | equal |
+| max_gen | 0 | 0 | 0% | 0 | 0% | equal |
+| max_status_gen | 0 | 0 | 0% | 0 | 0% | equal |
+| max_budget_used | 0 | 0 | 0% | 0 | 0% | equal |
+| applications | 0 | 0 | 0% | 0 | 0% | equal |
+| rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
+| spread_status | 0 | 0 | 0% | 0 | 0% | equal |
+| status_instances | 1 | 1 | 0% | 1 | 0% | equal |
+| pushed_tiles | 0 | 0 | 0% | 0 | 0% | equal |
+| seconds | 0 | 0 | 0% | 0 | 0% | equal |
+| host_attacks | 0 | 0 | 0% | 0 | 0% | equal |
+| finite | true | true | 0 | true | 0 | equal |
+| hops.total | 0 | 0 | 0% | 0 | 0% | equal |
+| by_element.physical | 900 | 900 | 0% | 900 | 0% | equal |
+| statuses.mana_mark | 1 | 1 | 0% | 1 | 0% | equal |
+| roots.with_applications | 0 | 0 | 0% | 0 | 0% | equal |
+
+### crystal-single-mark (direct)
+
+Actions: `[{"kind":"status","recipe":"mana5","status":"mana_mark","tower":0,"repeat":1,"target":0},{"kind":"damage","target":0,"amount":1000,"element":"physical"}]`
+
+| Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
+|---|---:|---:|---:|---:|---:|---|
+| damage | 900 | 900 | 0% | 900 | 0% | equal |
+| damage_capped | 1 | 1 | 0% | 1 | 0% | equal |
+| kills | 1 | 1 | 0% | 1 | 0% | equal |
+| mana | 2.3 | 2.3 | 0% | 2.3 | 0% | equal |
+| mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
+| mana_mark | 0.3 | 0.3 | 0% | 0.3 | 0% | equal |
+| stones | 3 | 3 | 0% | 3 | 0% | equal |
+| frozen | 0 | 0 | 0% | 0 | 0% | equal |
+| nova_frozen | 0 | 0 | 0% | 0 | 0% | equal |
+| shards | 0 | 0 | 0% | 0 | 0% | equal |
+| max_gen | 0 | 0 | 0% | 0 | 0% | equal |
+| max_status_gen | 0 | 0 | 0% | 0 | 0% | equal |
+| max_budget_used | 0 | 0 | 0% | 0 | 0% | equal |
+| applications | 0 | 0 | 0% | 0 | 0% | equal |
+| rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
+| spread_status | 0 | 0 | 0% | 0 | 0% | equal |
+| status_instances | 1 | 1 | 0% | 1 | 0% | equal |
+| pushed_tiles | 0 | 0 | 0% | 0 | 0% | equal |
+| seconds | 0 | 0 | 0% | 0 | 0% | equal |
+| host_attacks | 0 | 0 | 0% | 0 | 0% | equal |
+| finite | true | true | 0 | true | 0 | equal |
+| hops.total | 0 | 0 | 0% | 0 | 0% | equal |
+| by_element.physical | 900 | 900 | 0% | 900 | 0% | equal |
+| statuses.mana_mark | 1 | 1 | 0% | 1 | 0% | equal |
+| roots.with_applications | 0 | 0 | 0% | 0 | 0% | equal |
+
+### crystal-two-marks (direct)
+
+Actions: `[{"kind":"status","recipe":"mana5","status":"mana_mark","tower":0,"repeat":1,"target":0},{"kind":"status","recipe":"fire1{fire_hit:[mana5]}","status":"mana_mark","tower":0,"repeat":1,"target":0},{"kind":"damage","target":0,"amount":1000,"element":"physical"}]`
+
+| Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
+|---|---:|---:|---:|---:|---:|---|
+| damage | 900 | 900 | 0% | 900 | 0% | equal |
+| damage_capped | 1 | 1 | 0% | 1 | 0% | equal |
+| kills | 1 | 1 | 0% | 1 | 0% | equal |
+| mana | 2.3 | 2.3 | 0% | 2.3 | 0% | equal |
+| mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
+| mana_mark | 0.3 | 0.3 | 0% | 0.3 | 0% | equal |
+| stones | 3 | 3 | 0% | 3 | 0% | equal |
+| frozen | 0 | 0 | 0% | 0 | 0% | equal |
+| nova_frozen | 0 | 0 | 0% | 0 | 0% | equal |
+| shards | 0 | 0 | 0% | 0 | 0% | equal |
+| max_gen | 0 | 0 | 0% | 0 | 0% | equal |
+| max_status_gen | 0 | 0 | 0% | 0 | 0% | equal |
+| max_budget_used | 0 | 0 | 0% | 0 | 0% | equal |
+| applications | 0 | 0 | 0% | 0 | 0% | equal |
+| rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
+| spread_status | 0 | 0 | 0% | 0 | 0% | equal |
+| status_instances | 2 | 2 | 0% | 2 | 0% | equal |
+| pushed_tiles | 0 | 0 | 0% | 0 | 0% | equal |
+| seconds | 0 | 0 | 0% | 0 | 0% | equal |
+| host_attacks | 0 | 0 | 0% | 0 | 0% | equal |
+| finite | true | true | 0 | true | 0 | equal |
+| hops.total | 0 | 0 | 0% | 0 | 0% | equal |
+| by_element.physical | 900 | 900 | 0% | 900 | 0% | equal |
+| statuses.mana_mark | 2 | 2 | 0% | 2 | 0% | equal |
+| roots.with_applications | 0 | 0 | 0% | 0 | 0% | equal |
+
+### trail-real-crossing (direct)
+
+Actions: `[{"kind":"position","target":0,"value":6.49},{"kind":"status","recipe":"fire3","status":"burn","tower":0,"repeat":1,"target":0},{"kind":"move","target":0,"dist":0.02,"forced":false}]`
+
+| Metric | Python | Godot grid | Δ grid | Godot replay | Δ replay | Classification of differing cells |
+|---|---:|---:|---:|---:|---:|---|
+| damage | 0 | 0 | 0% | 0 | 0% | equal |
+| damage_capped | 0 | 0 | 0% | 0 | 0% | equal |
+| kills | 0 | 0 | 0% | 0 | 0% | equal |
+| mana | 0 | 0 | 0% | 0 | 0% | equal |
+| mana_siphon | 0 | 0 | 0% | 0 | 0% | equal |
+| mana_mark | 0 | 0 | 0% | 0 | 0% | equal |
+| stones | 0 | 0 | 0% | 0 | 0% | equal |
+| frozen | 0 | 0 | 0% | 0 | 0% | equal |
+| nova_frozen | 0 | 0 | 0% | 0 | 0% | equal |
+| shards | 0 | 0 | 0% | 0 | 0% | equal |
+| max_gen | 0 | 0 | 0% | 0 | 0% | equal |
+| max_status_gen | 0 | 0 | 0% | 0 | 0% | equal |
+| max_budget_used | 0 | 0 | 0% | 0 | 0% | equal |
+| applications | 0 | 0 | 0% | 0 | 0% | equal |
+| rejected_events | 0 | 0 | 0% | 0 | 0% | equal |
+| spread_status | 0 | 0 | 0% | 0 | 0% | equal |
+| status_instances | 1 | 1 | 0% | 1 | 0% | equal |
+| pushed_tiles | 0 | 0 | 0% | 0 | 0% | equal |
+| seconds | 0 | 0 | 0% | 0 | 0% | equal |
+| host_attacks | 0 | 0 | 0% | 0 | 0% | equal |
+| finite | true | true | 0 | true | 0 | equal |
+| hops.total | 0 | 0 | 0% | 0 | 0% | equal |
+| statuses.burn | 1 | 1 | 0% | 1 | 0% | equal |
+| roots.with_applications | 0 | 0 | 0% | 0 | 0% | equal |
+| fields.fire_trail | 0 | 1 | new (ref=0) | 1 | new (ref=0) | expected structural difference: E2 |
 
 ### lock-fire-burn (lock)
 
@@ -3964,3 +4337,744 @@ Recipes: `mana4{crystallize:[electric3]}`
 |---|---:|---:|---:|---:|---:|---|
 | compile error | locked_on_receiver | locked_on_receiver | — | locked_on_receiver | — | equal |
 
+## Commit delta: 6c65ef4 → 94a1c1a
+
+The original 136 cases (99 combat) are compared on identical inputs; new controls are not counted as changed old cases. The original adapter/report-generator snapshots and results are preserved under validation/harness_6c65ef4/, results_6c65ef4/ and REPORT_6c65ef4.md. Every changed table/counter metric appears below; results/commit-deltas.json retains exact full precision, including arithmetic-only changes. results/raw-commit-deltas.json additionally enumerates every changed raw state/trace leaf, including enemy state, root application records, status UID/tower metadata and compiler structures.
+
+| Stream | Old combat cases with material metric changes | Changed metrics | Damage equality before → after | All-metric equality before → after |
+|---|---:|---:|---|---|
+| Python | 8 | 18 | — | — |
+| grid | 51 | 353 | 42 → 44 | 35 → 39 |
+| replay | 49 | 305 | 67 → 67 | 57 → 60 |
+
+Reasons distinguish revised economy and repaired movement/trails from new defects. No old Python non-economy metric should change; any such row is explicitly flagged Investigate. Godot damage/target/status/field/root changes can be coupled consequences of both repairs; this is source-diff/path attribution, not an experimental decomposition into one cause per changed number. No new compiler rejection or runaway budget is accepted.
+
+| Stream / case | Metric | Before → after | Reason |
+|---|---|---|---|
+| Python / mana-graft | mana | 21.71043 → 20.357078 | Expected revised economy: lethal siphon + overkill exclusion + per-source soft cap; N1/N2/N3 source grouping remains shared |
+| Python / mana-graft | mana_siphon | 21.71043 → 20.357078 | Expected revised economy: lethal siphon + overkill exclusion + per-source soft cap; N1/N2/N3 source grouping remains shared |
+| Python / mana-mark | mana | 97.98 → 84.745 | Expected revised economy: lethal siphon + overkill exclusion + per-source soft cap; N1/N2/N3 source grouping remains shared |
+| Python / mana-mark | mana_mark | 37.48 → 32.12 | Expected revised economy: lethal siphon + overkill exclusion + per-source soft cap; N1/N2/N3 source grouping remains shared |
+| Python / mana-mark | mana_siphon | 58.5 → 50.625 | Expected revised economy: lethal siphon + overkill exclusion + per-source soft cap; N1/N2/N3 source grouping remains shared |
+| Python / mana-crystal | mana | 306.81 → 209.1375 | Expected revised economy: lethal siphon + overkill exclusion + per-source soft cap; N1/N2/N3 source grouping remains shared |
+| Python / mana-crystal | mana_mark | 125.01 → 91.6875 | Expected revised economy: lethal siphon + overkill exclusion + per-source soft cap; N1/N2/N3 source grouping remains shared |
+| Python / mana-crystal | mana_siphon | 173.8 → 109.45 | Expected revised economy: lethal siphon + overkill exclusion + per-source soft cap; N1/N2/N3 source grouping remains shared |
+| Python / plain-mana3 | mana | 63 → 58.5 | Expected revised economy: lethal siphon + overkill exclusion + per-source soft cap; N1/N2/N3 source grouping remains shared |
+| Python / plain-mana3 | mana_siphon | 54 → 49.5 | Expected revised economy: lethal siphon + overkill exclusion + per-source soft cap; N1/N2/N3 source grouping remains shared |
+| Python / plain-mana5 | mana | 199.98 → 147.18 | Expected revised economy: lethal siphon + overkill exclusion + per-source soft cap; N1/N2/N3 source grouping remains shared |
+| Python / plain-mana5 | mana_siphon | 158.4 → 105.6 | Expected revised economy: lethal siphon + overkill exclusion + per-source soft cap; N1/N2/N3 source grouping remains shared |
+| Python / siphon-lethal-mana1 | mana | 2 → 2.6 | B3 payout fixed in Python; both engines now exclude overkill |
+| Python / siphon-lethal-mana1 | mana_siphon | 0 → 0.6 | B3 payout fixed in Python; both engines now exclude overkill |
+| Python / siphon-lethal-mana3 | mana | 2 → 2.75 | B3 payout fixed in Python; both engines now exclude overkill |
+| Python / siphon-lethal-mana3 | mana_siphon | 0 → 0.75 | B3 payout fixed in Python; both engines now exclude overkill |
+| Python / mark-economics | mana | 13.91 → 11.21 | Expected revised economy: lethal siphon + overkill exclusion + per-source soft cap; N1/N2/N3 source grouping remains shared |
+| Python / mark-economics | mana_mark | 11.91 → 9.21 | Expected revised economy: lethal siphon + overkill exclusion + per-source soft cap; N1/N2/N3 source grouping remains shared |
+| grid / budget-dense-64 | applications | 75 → 74 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / budget-dense-64 | bleed_forced | 6.565835 → 5.715385 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / budget-dense-64 | by_element.blood | 6.565835 → 5.715385 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / budget-dense-64 | by_element.electric | 83.976924 → 83.548363 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / budget-dense-64 | by_element.ice | 13.417161 → 13.322174 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / budget-dense-64 | by_element.poison | 221.364232 → 209.827672 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / budget-dense-64 | by_element.water | 9.986428 → 9.849226 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / budget-dense-64 | by_tower.0 | 518.70664 → 505.658879 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / budget-dense-64 | damage | 518.70664 → 505.658879 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / budget-dense-64 | damage_capped | 518.70664 → 505.658879 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / budget-dense-64 | roots.using_1_applications | 39 → 38 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / budget-dense-64 | roots.with_applications | 44 → 43 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / budget-dense-64 | spread_status | 88 → 87 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / budget-dense-64 | status_instances | 14 → 15 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / budget-dense-64 | statuses.bleed | 18 → 17 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep3 | applications | 164 → 158 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep3 | by_element.electric | 268.724937 → 278.930937 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep3 | by_element.fire | 376.65 → 364.05 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep3 | by_element.ice | 72.527836 → 65.030836 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep3 | by_element.poison | 33.3396 → 37.044 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep3 | by_tower.0 | 751.242373 → 718.296095 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / deep3 | damage | 751.242373 → 745.055773 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep3 | damage_capped | 720 → 718.296095 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep3 | fields.fire_trail | 14 → 13 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep3 | hops.buz parçası düşer | 3 → 2 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep3 | hops.total | 25 → 24 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep3 | kills | 6 → 5 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep3 | mana | 12 → 10 | Expected revised economy plus B1/B2 movement/trail cascade; N1/N2/N3 source grouping remains shared |
+| grid / deep3 | roots.using_1_applications | 102 → 98 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep3 | roots.using_2_applications | 1 → 0 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep3 | roots.with_applications | 112 → 107 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep3 | seconds | 13.4 → 14 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep3 | shards | 2 → 1 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep3 | spread_status | 132 → 133 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep3 | statuses.charge | 61 → 62 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep3 | stones | 6 → 5 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep4 | applications | 160 → 156 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep4 | by_element.electric | 261.164937 → 276.284937 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep4 | by_element.fire | 370.8 → 358.2 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep4 | by_element.ice | 70.631646 → 72.527836 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep4 | by_element.poison | 33.3396 → 34.5744 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep4 | by_tower.0 | 749.61267 → 720 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / deep4 | damage | 749.61267 → 755.26366 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep4 | fields.fire_trail | 14 → 13 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep4 | frozen | 12 → 15 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep4 | max_budget_used | 8 → 9 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep4 | nova_frozen | 8 → 10 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep4 | roots.using_1_applications | 101 → 94 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep4 | roots.using_2_applications | 2 → 1 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep4 | roots.using_3_applications | 0 → 1 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep4 | roots.using_7_applications | 5 → 4 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep4 | roots.using_9_applications | 0 → 1 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep4 | roots.with_applications | 111 → 104 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep4 | spread_status | 139 → 146 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep4 | status_instances | 23 → 24 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep4 | statuses.burn | 27 → 28 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep4 | statuses.charge | 60 → 62 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep4 | statuses.cold | 21 → 22 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep4 | statuses.poison | 5 → 7 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / deep4 | statuses.slow | 21 → 22 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / frozen-death-shards | by_tower.0 | 930.564909 → 31.564909 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / mana-crystal | applications | 84 → 75 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / mana-crystal | by_element.fire | 237.6 → 220.8 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / mana-crystal | by_tower.1 | 237.6 → 220.8 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / mana-crystal | by_tower.2 | 304.5 → 246.9 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / mana-crystal | damage | 715.9 → 699.1 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / mana-crystal | damage_capped | 650.7 → 641.5 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / mana-crystal | mana | 303.54 → 207.03 | Expected revised economy plus B1/B2 movement/trail cascade; N1/N2/N3 source grouping remains shared |
+| grid / mana-crystal | mana_mark | 121.74 → 89.58 | Expected revised economy plus B1/B2 movement/trail cascade; N1/N2/N3 source grouping remains shared |
+| grid / mana-crystal | mana_siphon | 173.8 → 109.45 | Expected revised economy plus B1/B2 movement/trail cascade; N1/N2/N3 source grouping remains shared |
+| grid / mana-crystal | roots.using_1_applications | 57 → 48 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / mana-crystal | roots.with_applications | 62 → 53 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / mana-graft | applications | 44 → 40 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / mana-graft | by_element.fire | 134.1 → 130.5 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / mana-graft | by_tower.0 | 147.9915 → 144.3915 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / mana-graft | damage | 147.9915 → 144.3915 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / mana-graft | damage_capped | 147.9915 → 144.3915 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / mana-graft | fields.fire_trail | 15 → 12 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / mana-graft | mana | 21.71043 → 20.357077 | Expected revised economy plus B1/B2 movement/trail cascade; N1/N2/N3 source grouping remains shared |
+| grid / mana-graft | mana_siphon | 21.71043 → 20.357077 | Expected revised economy plus B1/B2 movement/trail cascade; N1/N2/N3 source grouping remains shared |
+| grid / mana-graft | roots.using_1_applications | 44 → 40 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / mana-graft | roots.with_applications | 44 → 40 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / mana-mark | by_tower.1 | 168.3 → 153.5 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / mana-mark | mana | 97.98 → 84.745 | Expected revised economy: overkill exclusion + soft cap; N1/N2/N3 source grouping remains shared |
+| grid / mana-mark | mana_mark | 37.48 → 32.12 | Expected revised economy: overkill exclusion + soft cap; N1/N2/N3 source grouping remains shared |
+| grid / mana-mark | mana_siphon | 58.5 → 50.625 | Expected revised economy: overkill exclusion + soft cap; N1/N2/N3 source grouping remains shared |
+| grid / mark-economics | by_tower.0 | 39.7 → 30.7 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / mark-economics | mana | 13.91 → 11.21 | Expected revised economy: overkill exclusion + soft cap; N1/N2/N3 source grouping remains shared |
+| grid / mark-economics | mana_mark | 11.91 → 9.21 | Expected revised economy: overkill exclusion + soft cap; N1/N2/N3 source grouping remains shared |
+| grid / plain-blood5 | by_tower.0 | 249.66 → 249.6 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / plain-fire3 | applications | 44 → 40 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / plain-fire3 | by_element.fire | 134.1 → 130.5 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / plain-fire3 | by_tower.0 | 134.1 → 130.5 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / plain-fire3 | damage | 134.1 → 130.5 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / plain-fire3 | damage_capped | 134.1 → 130.5 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / plain-fire3 | fields.fire_trail | 15 → 12 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / plain-fire3 | roots.using_1_applications | 44 → 40 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / plain-fire3 | roots.with_applications | 44 → 40 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / plain-fire5 | applications | 58 → 52 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / plain-fire5 | by_element.fire | 232.2 → 221.4 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / plain-fire5 | by_tower.0 | 232.2 → 219.9 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / plain-fire5 | damage | 232.2 → 221.4 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / plain-fire5 | damage_capped | 228.9 → 219.9 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / plain-fire5 | fields.fire_trail | 11 → 10 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / plain-fire5 | roots.using_1_applications | 58 → 52 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / plain-fire5 | roots.with_applications | 58 → 52 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / plain-golem5 | by_tower.0 | 270 → 255 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / plain-hive3 | by_tower.0 | 130.5 → 129 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / plain-hive5 | by_tower.0 | 340.2 → 337.2 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / plain-ice5 | by_tower.0 | 163.8 → 143.4 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / plain-light5 | by_tower.0 | 307.881 → 300.306 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / plain-mana3 | mana | 63 → 58.5 | Expected revised economy: overkill exclusion + soft cap; N1/N2/N3 source grouping remains shared |
+| grid / plain-mana3 | mana_siphon | 54 → 49.5 | Expected revised economy: overkill exclusion + soft cap; N1/N2/N3 source grouping remains shared |
+| grid / plain-mana5 | mana | 199.98 → 147.18 | Expected revised economy: overkill exclusion + soft cap; N1/N2/N3 source grouping remains shared |
+| grid / plain-mana5 | mana_siphon | 158.4 → 105.6 | Expected revised economy: overkill exclusion + soft cap; N1/N2/N3 source grouping remains shared |
+| grid / plain-meteor5 | by_tower.0 | 302.4 → 292.8 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / plain-poison5 | by_tower.0 | 257.4 → 238.8 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / plain-water5 | by_tower.0 | 188.1 → 169.5 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / push-chain-stale-position | applications | 5 → 1 | B1 fixed: post-move transform removes unintended chains and downstream payloads |
+| grid / push-chain-stale-position | by_element.electric | 10.470757 → 6.3 | B1 fixed: post-move transform removes unintended chains and downstream payloads |
+| grid / push-chain-stale-position | by_element.water | 19.445692 → 11.7 | B1 fixed: post-move transform removes unintended chains and downstream payloads |
+| grid / push-chain-stale-position | by_tower.0 | 29.91645 → 18 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / push-chain-stale-position | damage | 29.91645 → 18 | B1 fixed: post-move transform removes unintended chains and downstream payloads |
+| grid / push-chain-stale-position | damage_capped | 29.91645 → 18 | B1 fixed: post-move transform removes unintended chains and downstream payloads |
+| grid / push-chain-stale-position | hops.mermi sekerek | 2 → 0 | B1 fixed: post-move transform removes unintended chains and downstream payloads |
+| grid / push-chain-stale-position | hops.total | 2 → 0 | B1 fixed: post-move transform removes unintended chains and downstream payloads |
+| grid / push-chain-stale-position | max_budget_used | 5 → 1 | B1 fixed: post-move transform removes unintended chains and downstream payloads |
+| grid / push-chain-stale-position | max_gen | 1 → 0 | B1 fixed: post-move transform removes unintended chains and downstream payloads |
+| grid / push-chain-stale-position | max_status_gen | 1 → 0 | B1 fixed: post-move transform removes unintended chains and downstream payloads |
+| grid / push-chain-stale-position | pushed_tiles | 0.581709 → 0.35 | B1 fixed: post-move transform removes unintended chains and downstream payloads |
+| grid / push-chain-stale-position | roots.using_1_applications | 0 → 1 | B1 fixed: post-move transform removes unintended chains and downstream payloads |
+| grid / push-chain-stale-position | roots.using_5_applications | 1 → 0 | B1 fixed: post-move transform removes unintended chains and downstream payloads |
+| grid / push-chain-stale-position | spread_status | 2 → 0 | B1 fixed: post-move transform removes unintended chains and downstream payloads |
+| grid / push-chain-stale-position | status_instances | 3 → 1 | B1 fixed: post-move transform removes unintended chains and downstream payloads |
+| grid / push-chain-stale-position | statuses.wet | 3 → 1 | B1 fixed: post-move transform removes unintended chains and downstream payloads |
+| grid / rej-pierce-tick | applications | 44 → 40 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / rej-pierce-tick | by_element.fire | 134.1 → 130.5 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / rej-pierce-tick | by_tower.0 | 174.231 → 170.631 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / rej-pierce-tick | damage | 174.231 → 170.631 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / rej-pierce-tick | damage_capped | 174.231 → 170.631 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / rej-pierce-tick | fields.fire_trail | 15 → 12 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / rej-pierce-tick | roots.using_1_applications | 44 → 40 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / rej-pierce-tick | roots.with_applications | 44 → 40 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / rej-summon | applications | 40 → 35 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / rej-summon | by_element.fire | 128.7 → 124.2 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / rej-summon | by_tower.0 | 194.6295 → 187.6575 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / rej-summon | damage | 194.6295 → 190.1295 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / rej-summon | damage_capped | 191.2575 → 187.6575 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / rej-summon | fields.fire_trail | 15 → 12 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / rej-summon | roots.using_1_applications | 40 → 35 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / rej-summon | roots.with_applications | 40 → 35 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-0 | applications | 80 → 79 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-0 | by_element.fire | 123.861654 → 121.341654 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-0 | by_tower.0 | 742.832554 → 720 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / shuffle-0 | damage | 742.832554 → 740.312554 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-0 | fields.fire_trail | 6 → 5 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-0 | roots.using_1_applications | 39 → 38 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-0 | roots.with_applications | 46 → 45 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-0 | seconds | 10.9 → 10.25 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-0 | status_instances | 10 → 11 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-1 | applications | 80 → 79 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-1 | by_element.fire | 123.861654 → 121.341654 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-1 | by_tower.0 | 742.832554 → 720 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / shuffle-1 | damage | 742.832554 → 740.312554 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-1 | fields.fire_trail | 6 → 5 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-1 | roots.using_1_applications | 39 → 38 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-1 | roots.with_applications | 46 → 45 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-1 | seconds | 10.9 → 10.25 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-1 | status_instances | 10 → 11 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-2 | applications | 80 → 79 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-2 | by_element.fire | 123.861654 → 121.341654 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-2 | by_tower.0 | 742.832554 → 720 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / shuffle-2 | damage | 742.832554 → 740.312554 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-2 | fields.fire_trail | 6 → 5 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-2 | roots.using_1_applications | 39 → 38 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-2 | roots.with_applications | 46 → 45 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-2 | seconds | 10.9 → 10.25 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-2 | status_instances | 10 → 11 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-3 | applications | 80 → 79 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-3 | by_element.fire | 123.861654 → 121.341654 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-3 | by_tower.0 | 742.832554 → 720 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / shuffle-3 | damage | 742.832554 → 740.312554 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-3 | fields.fire_trail | 6 → 5 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-3 | roots.using_1_applications | 39 → 38 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-3 | roots.with_applications | 46 → 45 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-3 | seconds | 10.9 → 10.25 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-3 | status_instances | 10 → 11 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-4 | applications | 80 → 79 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-4 | by_element.fire | 123.861654 → 121.341654 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-4 | by_tower.0 | 742.832554 → 720 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / shuffle-4 | damage | 742.832554 → 740.312554 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-4 | fields.fire_trail | 6 → 5 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-4 | roots.using_1_applications | 39 → 38 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-4 | roots.with_applications | 46 → 45 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-4 | seconds | 10.9 → 10.25 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-4 | status_instances | 10 → 11 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-5 | applications | 80 → 79 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-5 | by_element.fire | 123.861654 → 121.341654 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-5 | by_tower.0 | 742.832554 → 720 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / shuffle-5 | damage | 742.832554 → 740.312554 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-5 | fields.fire_trail | 6 → 5 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-5 | roots.using_1_applications | 39 → 38 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-5 | roots.with_applications | 46 → 45 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-5 | seconds | 10.9 → 10.25 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / shuffle-5 | status_instances | 10 → 11 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / siphon-lethal-mana1 | by_tower.0 | 4.05 → 1 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / siphon-lethal-mana1 | mana | 4.43 → 2.6 | B3 payout fixed in Python; both engines now exclude overkill |
+| grid / siphon-lethal-mana1 | mana_siphon | 2.43 → 0.6 | B3 payout fixed in Python; both engines now exclude overkill |
+| grid / siphon-lethal-mana3 | by_tower.0 | 9 → 1 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / siphon-lethal-mana3 | mana | 8.75 → 2.75 | B3 payout fixed in Python; both engines now exclude overkill |
+| grid / siphon-lethal-mana3 | mana_siphon | 6.75 → 0.75 | B3 payout fixed in Python; both engines now exclude overkill |
+| grid / stress-24 | applications | 139 → 134 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | bleed_forced | 8.880674 → 8.130834 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | bleed_walk | 40.298444 → 41.819666 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | by_element.blood | 49.179118 → 49.9505 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | by_element.electric | 124.072838 → 131.722356 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | by_element.fire | 171.365537 → 189.015992 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | by_element.ice | 41.255708 → 36.69146 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | by_element.impact | 108.055544 → 115.71338 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | by_element.lava | 34.186614 → 28.212534 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | by_element.light | 60.17984 → 47.63192 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | by_element.physical | 51.973572 → 44.914634 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | by_element.poison | 64.853236 → 95.846403 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | by_element.water | 22.035064 → 18.551146 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | by_tower.0 | 727.157071 → 720 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / stress-24 | damage | 727.157071 → 758.250325 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | damage_capped | 720 → 720 | Floating arithmetic only (within stated tolerance) |
+| grid / stress-24 | fields.fire_trail | 5 → 3 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | frozen | 4 → 3 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | hops.durum yandakine atlayarak | 9 → 8 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | hops.parça | 1 → 2 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | host_attacks | 3 → 4 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | pushed_tiles | 1.090751 → 1.004457 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | roots.using_3_applications | 3 → 0 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | roots.using_5_applications | 12 → 11 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | roots.using_9_applications | 0 → 1 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | roots.with_applications | 47 → 44 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | seconds | 5.95 → 7.15 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | spread_status | 192 → 180 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | status_instances | 100 → 90 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | statuses.blind | 15 → 13 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | statuses.burn | 29 → 30 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | statuses.charge | 9 → 12 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | statuses.cold | 18 → 16 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | statuses.poison | 50 → 48 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | statuses.shred | 18 → 16 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | statuses.slow | 27 → 24 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / stress-24 | statuses.wet | 20 → 18 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / trail-spurious-cell-drop | fields.fire_trail | 1 → 0 | B2 fixed: first last_drop is snapped, no initial field |
+| grid / user-trail-ice | applications | 45 → 48 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / user-trail-ice | by_element.fire | 131.4 → 134.1 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / user-trail-ice | by_element.ice | 29.484 → 32.886 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / user-trail-ice | by_tower.0 | 160.884 → 166.986 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / user-trail-ice | damage | 160.884 → 166.986 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / user-trail-ice | damage_capped | 160.884 → 166.986 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / user-trail-ice | fields.fire_trail | 10 → 8 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / user-trail-ice | roots.using_1_applications | 45 → 48 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / user-trail-ice | roots.with_applications | 45 → 48 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / user-trail-ice | status_instances | 5 → 7 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / user-trail-ice | statuses.slow | 26 → 29 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-01 | applications | 44 → 40 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-01 | by_element.fire | 134.1 → 130.5 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-01 | by_tower.0 | 161.883 → 158.283 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / v4-01 | damage | 161.883 → 158.283 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-01 | damage_capped | 161.883 → 158.283 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-01 | fields.fire_trail | 15 → 12 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-01 | roots.using_1_applications | 44 → 40 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-01 | roots.with_applications | 44 → 40 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-02 | applications | 115 → 114 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-02 | by_element.fire | 262.44909 → 261.54909 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-02 | by_tower.0 | 335.744392 → 334.844393 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / v4-02 | damage | 335.744392 → 334.844393 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-02 | damage_capped | 335.744392 → 334.844393 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-02 | fields.fire_trail | 15 → 12 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-02 | roots.using_1_applications | 80 → 79 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-02 | roots.with_applications | 87 → 86 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-03 | applications | 120 → 116 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-03 | by_element.fire | 211.5 → 207.9 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-03 | by_tower.0 | 300.353121 → 296.753121 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / v4-03 | damage | 300.353121 → 296.753121 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-03 | damage_capped | 300.353121 → 296.753121 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-03 | roots.using_1_applications | 80 → 76 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-03 | roots.with_applications | 88 → 84 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-04 | applications | 118 → 112 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-04 | by_element.fire | 209.7 → 204.3 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-04 | by_tower.0 | 311.165492 → 305.765492 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / v4-04 | damage | 311.165492 → 305.765492 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-04 | damage_capped | 311.165492 → 305.765492 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-04 | fields.fire_trail | 15 → 13 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-04 | roots.using_1_applications | 78 → 72 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-04 | roots.with_applications | 86 → 80 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-05 | applications | 137 → 131 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-05 | bleed_walk | 109.62 → 110.0925 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-05 | by_element.blood | 109.62 → 110.0925 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-05 | by_element.electric | 70.498591 → 72.703591 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-05 | by_element.fire | 305.55 → 292.95 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-05 | by_tower.0 | 693.568591 → 662.35399 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / v4-05 | damage | 693.568591 → 683.646091 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-05 | damage_capped | 664.15399 → 662.35399 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-05 | fields.fire_trail | 11 → 9 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-05 | roots.using_1_applications | 107 → 101 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-05 | roots.with_applications | 113 → 107 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-06 | by_tower.0 | 122.4 → 108.4 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / v4-07 | by_tower.0 | 120.015 → 120 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / v4-09 | applications | 50 → 46 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-09 | bleed_walk | 34.1775 → 34.02 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-09 | by_element.blood | 49.06125 → 48.90375 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-09 | by_element.fire | 126.9 → 123.3 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-09 | by_tower.0 | 126.9 → 121.8975 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / v4-09 | by_tower.1 | 175.06125 → 174.90375 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / v4-09 | damage | 301.96125 → 298.20375 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-09 | damage_capped | 300.40125 → 296.80125 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-09 | fields.fire_trail | 12 → 11 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-09 | roots.using_1_applications | 50 → 46 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-09 | roots.with_applications | 50 → 46 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-09-alone | by_tower.0 | 176.2425 → 176.16 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / v4-12 | applications | 105 → 103 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-12 | by_element.fire | 63.121494 → 62.239494 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-12 | by_tower.0 | 445.456614 → 444.574614 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / v4-12 | damage | 445.456614 → 444.574614 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-12 | damage_capped | 445.456614 → 444.574614 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-12 | fields.fire_trail | 10 → 8 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-12 | roots.using_1_applications | 57 → 55 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-12 | roots.with_applications | 65 → 63 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-15 | applications | 30 → 26 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-15 | by_element.fire | 65.52 → 63 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-15 | by_tower.0 | 184.32 → 179.58 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / v4-15 | damage | 184.32 → 181.8 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-15 | damage_capped | 182.1 → 179.58 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-15 | fields.fire_trail | 9 → 7 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-15 | roots.using_1_applications | 30 → 26 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-15 | roots.with_applications | 30 → 26 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-17 | by_tower.0 | 164.205 → 164.19 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / v4-18 | by_tower.0 | 196.335 → 194.79 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / v4-21 | applications | 85 → 74 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-21 | by_element.fire | 218.7 → 209.7 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-21 | by_element.poison | 97.65 → 78.75 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-21 | by_tower.0 | 316.35 → 286.05 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / v4-21 | damage | 316.35 → 288.45 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-21 | damage_capped | 309 → 286.05 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-21 | fields.fire_trail | 11 → 10 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-21 | roots.using_1_applications | 85 → 74 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-21 | roots.with_applications | 85 → 74 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-21 | statuses.poison | 35 → 30 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-22 | applications | 80 → 79 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-22 | by_element.fire | 123.861654 → 121.341654 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-22 | by_tower.0 | 742.832554 → 720 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| grid / v4-22 | damage | 742.832554 → 740.312554 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-22 | fields.fire_trail | 6 → 5 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-22 | roots.using_1_applications | 39 → 38 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-22 | roots.with_applications | 46 → 45 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-22 | seconds | 10.9 → 10.25 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / v4-22 | status_instances | 10 → 11 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| grid / wet-electric | by_tower.1 | 186.57 → 185.07 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / deep3 | applications | 162 → 153 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep3 | by_element.electric | 247.785391 → 260.637391 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep3 | by_element.fire | 345.6 → 329.85 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep3 | by_tower.0 | 704.760806 → 688.125635 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / deep3 | damage | 704.760806 → 701.862806 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep3 | damage_capped | 691.725635 → 688.125635 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep3 | fields.fire_trail | 16 → 13 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep3 | roots.using_1_applications | 95 → 86 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep3 | roots.with_applications | 106 → 97 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep3 | spread_status | 134 → 137 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep3 | statuses.charge | 60 → 61 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep3 | statuses.cold | 23 → 24 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep3 | statuses.slow | 23 → 24 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep4 | applications | 155 → 149 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep4 | by_element.electric | 247.056087 → 255.345391 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep4 | by_element.fire | 339.75 → 321.75 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep4 | by_element.ice | 70.631646 → 76.139626 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep4 | by_element.poison | 34.5744 → 37.044 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep4 | by_tower.0 | 709.892995 → 692.569428 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / deep4 | damage | 709.892995 → 708.159879 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep4 | damage_capped | 693.699828 → 692.569428 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep4 | fields.fire_trail | 16 → 13 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep4 | frozen | 12 → 15 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep4 | hops.durum yandakine atlayarak | 23 → 24 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep4 | hops.total | 26 → 27 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep4 | max_budget_used | 8 → 9 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep4 | nova_frozen | 8 → 10 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep4 | roots.using_1_applications | 94 → 84 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep4 | roots.using_2_applications | 3 → 2 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep4 | roots.using_4_applications | 0 → 1 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep4 | roots.using_7_applications | 5 → 4 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep4 | roots.using_9_applications | 0 → 1 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep4 | roots.with_applications | 105 → 95 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep4 | spread_status | 137 → 146 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep4 | status_instances | 25 → 26 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep4 | statuses.burn | 27 → 29 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep4 | statuses.charge | 59 → 60 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep4 | statuses.cold | 21 → 23 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep4 | statuses.poison | 5 → 7 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / deep4 | statuses.slow | 21 → 23 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / frozen-death-shards | by_tower.0 | 930.564909 → 31.564909 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / mana-crystal | applications | 84 → 72 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / mana-crystal | by_element.fire | 235.1 → 212.3 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / mana-crystal | by_tower.1 | 235.1 → 212.3 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / mana-crystal | by_tower.2 | 304.5 → 246.9 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / mana-crystal | damage | 713.4 → 690.6 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / mana-crystal | damage_capped | 644.4 → 633 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / mana-crystal | fields.fire_trail | 9 → 7 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / mana-crystal | mana | 301.05 → 206.4675 | Expected revised economy plus B1/B2 movement/trail cascade; N1/N2/N3 source grouping remains shared |
+| replay / mana-crystal | mana_mark | 119.25 → 89.0175 | Expected revised economy plus B1/B2 movement/trail cascade; N1/N2/N3 source grouping remains shared |
+| replay / mana-crystal | mana_siphon | 173.8 → 109.45 | Expected revised economy plus B1/B2 movement/trail cascade; N1/N2/N3 source grouping remains shared |
+| replay / mana-crystal | roots.using_1_applications | 57 → 45 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / mana-crystal | roots.with_applications | 62 → 50 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / mana-graft | applications | 42 → 40 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / mana-graft | by_element.fire | 132.3 → 130.5 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / mana-graft | by_tower.0 | 146.1915 → 144.3915 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / mana-graft | damage | 146.1915 → 144.3915 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / mana-graft | damage_capped | 146.1915 → 144.3915 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / mana-graft | fields.fire_trail | 14 → 12 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / mana-graft | mana | 21.71043 → 20.357077 | Expected revised economy plus B1/B2 movement/trail cascade; N1/N2/N3 source grouping remains shared |
+| replay / mana-graft | mana_siphon | 21.71043 → 20.357077 | Expected revised economy plus B1/B2 movement/trail cascade; N1/N2/N3 source grouping remains shared |
+| replay / mana-graft | roots.using_1_applications | 42 → 40 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / mana-graft | roots.with_applications | 42 → 40 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / mana-mark | by_tower.1 | 168.3 → 153.5 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / mana-mark | mana | 97.98 → 84.745 | Expected revised economy: overkill exclusion + soft cap; N1/N2/N3 source grouping remains shared |
+| replay / mana-mark | mana_mark | 37.48 → 32.12 | Expected revised economy: overkill exclusion + soft cap; N1/N2/N3 source grouping remains shared |
+| replay / mana-mark | mana_siphon | 58.5 → 50.625 | Expected revised economy: overkill exclusion + soft cap; N1/N2/N3 source grouping remains shared |
+| replay / mark-economics | by_tower.0 | 39.7 → 30.7 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / mark-economics | mana | 13.91 → 11.21 | Expected revised economy: overkill exclusion + soft cap; N1/N2/N3 source grouping remains shared |
+| replay / mark-economics | mana_mark | 11.91 → 9.21 | Expected revised economy: overkill exclusion + soft cap; N1/N2/N3 source grouping remains shared |
+| replay / plain-blood5 | by_tower.0 | 248.04 → 247.98 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / plain-fire3 | applications | 42 → 40 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / plain-fire3 | by_element.fire | 132.3 → 130.5 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / plain-fire3 | by_tower.0 | 132.3 → 130.5 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / plain-fire3 | damage | 132.3 → 130.5 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / plain-fire3 | damage_capped | 132.3 → 130.5 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / plain-fire3 | fields.fire_trail | 14 → 12 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / plain-fire3 | roots.using_1_applications | 42 → 40 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / plain-fire3 | roots.with_applications | 42 → 40 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / plain-fire5 | applications | 56 → 52 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / plain-fire5 | by_element.fire | 226.35 → 219.15 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / plain-fire5 | by_tower.0 | 226.35 → 217.65 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / plain-fire5 | damage | 226.35 → 219.15 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / plain-fire5 | damage_capped | 223.05 → 217.65 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / plain-fire5 | fields.fire_trail | 12 → 10 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / plain-fire5 | roots.using_1_applications | 56 → 52 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / plain-fire5 | roots.with_applications | 56 → 52 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / plain-golem5 | by_tower.0 | 315 → 285 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / plain-hive3 | by_tower.0 | 135 → 133.5 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / plain-hive5 | by_tower.0 | 356.4 → 353.4 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / plain-ice5 | by_tower.0 | 163.8 → 143.4 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / plain-light5 | by_tower.0 | 307.2006 → 299.6256 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / plain-mana3 | mana | 63 → 58.5 | Expected revised economy: overkill exclusion + soft cap; N1/N2/N3 source grouping remains shared |
+| replay / plain-mana3 | mana_siphon | 54 → 49.5 | Expected revised economy: overkill exclusion + soft cap; N1/N2/N3 source grouping remains shared |
+| replay / plain-mana5 | mana | 199.98 → 147.18 | Expected revised economy: overkill exclusion + soft cap; N1/N2/N3 source grouping remains shared |
+| replay / plain-mana5 | mana_siphon | 158.4 → 105.6 | Expected revised economy: overkill exclusion + soft cap; N1/N2/N3 source grouping remains shared |
+| replay / plain-meteor5 | by_tower.0 | 288 → 278.4 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / plain-poison5 | by_tower.0 | 257.4 → 238.8 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / plain-water5 | by_tower.0 | 188.1 → 169.5 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / rej-pierce-tick | applications | 42 → 40 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / rej-pierce-tick | by_element.fire | 132.3 → 130.5 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / rej-pierce-tick | by_tower.0 | 172.431 → 170.631 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / rej-pierce-tick | damage | 172.431 → 170.631 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / rej-pierce-tick | damage_capped | 172.431 → 170.631 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / rej-pierce-tick | fields.fire_trail | 14 → 12 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / rej-pierce-tick | roots.using_1_applications | 42 → 40 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / rej-pierce-tick | roots.with_applications | 42 → 40 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / rej-summon | applications | 38 → 36 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / rej-summon | by_element.fire | 126.9 → 125.1 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / rej-summon | by_tower.0 | 192.8295 → 188.5575 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / rej-summon | damage | 192.8295 → 191.0295 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / rej-summon | damage_capped | 189.4575 → 188.5575 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / rej-summon | fields.fire_trail | 14 → 12 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / rej-summon | roots.using_1_applications | 38 → 36 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / rej-summon | roots.with_applications | 38 → 36 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-0 | applications | 93 → 90 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-0 | by_element.fire | 127.140363 → 125.250363 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-0 | by_tower.0 | 784.020058 → 707.806426 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / shuffle-0 | damage | 784.020058 → 782.130058 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-0 | fields.fire_trail | 10 → 8 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-0 | roots.using_1_applications | 47 → 44 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-0 | roots.with_applications | 55 → 52 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-1 | applications | 93 → 90 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-1 | by_element.fire | 127.140363 → 125.250363 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-1 | by_tower.0 | 784.020058 → 707.806426 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / shuffle-1 | damage | 784.020058 → 782.130058 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-1 | fields.fire_trail | 10 → 8 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-1 | roots.using_1_applications | 47 → 44 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-1 | roots.with_applications | 55 → 52 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-2 | applications | 93 → 90 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-2 | by_element.fire | 127.140363 → 125.250363 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-2 | by_tower.0 | 784.020058 → 707.806426 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / shuffle-2 | damage | 784.020058 → 782.130058 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-2 | fields.fire_trail | 10 → 8 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-2 | roots.using_1_applications | 47 → 44 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-2 | roots.with_applications | 55 → 52 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-3 | applications | 93 → 90 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-3 | by_element.fire | 127.140363 → 125.250363 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-3 | by_tower.0 | 784.020058 → 707.806426 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / shuffle-3 | damage | 784.020058 → 782.130058 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-3 | fields.fire_trail | 10 → 8 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-3 | roots.using_1_applications | 47 → 44 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-3 | roots.with_applications | 55 → 52 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-4 | applications | 93 → 90 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-4 | by_element.fire | 127.140363 → 125.250363 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-4 | by_tower.0 | 784.020058 → 707.806426 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / shuffle-4 | damage | 784.020058 → 782.130058 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-4 | fields.fire_trail | 10 → 8 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-4 | roots.using_1_applications | 47 → 44 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-4 | roots.with_applications | 55 → 52 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-5 | applications | 93 → 90 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-5 | by_element.fire | 127.140363 → 125.250363 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-5 | by_tower.0 | 784.020058 → 707.806426 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / shuffle-5 | damage | 784.020058 → 782.130058 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-5 | fields.fire_trail | 10 → 8 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-5 | roots.using_1_applications | 47 → 44 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / shuffle-5 | roots.with_applications | 55 → 52 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / siphon-lethal-mana1 | by_tower.0 | 4.05 → 1 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / siphon-lethal-mana1 | mana | 4.43 → 2.6 | B3 payout fixed in Python; both engines now exclude overkill |
+| replay / siphon-lethal-mana1 | mana_siphon | 2.43 → 0.6 | B3 payout fixed in Python; both engines now exclude overkill |
+| replay / siphon-lethal-mana3 | by_tower.0 | 9 → 1 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / siphon-lethal-mana3 | mana | 8.75 → 2.75 | B3 payout fixed in Python; both engines now exclude overkill |
+| replay / siphon-lethal-mana3 | mana_siphon | 6.75 → 0.75 | B3 payout fixed in Python; both engines now exclude overkill |
+| replay / stress-24 | applications | 154 → 139 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | bleed_forced | 7.621823 → 8.130834 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | bleed_walk | 38.685925 → 65.260951 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | by_element.blood | 46.307748 → 73.391785 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | by_element.electric | 118.619273 → 107.222636 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | by_element.fire | 163.699052 → 133.575992 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | by_element.ice | 43.285894 → 32.806779 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | by_element.impact | 64.512879 → 78.54786 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | by_element.lava | 39.784374 → 28.212534 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | by_element.light | 78.10992 → 47.63192 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | by_element.physical | 58.634202 → 41.627597 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | by_element.poison | 102.380376 → 182.883619 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | by_element.water | 21.975382 → 18.551146 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | by_tower.0 | 737.309101 → 720 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / stress-24 | damage | 737.309101 → 744.451868 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | damage_capped | 720 → 720 | Floating arithmetic only (within stated tolerance) |
+| replay / stress-24 | fields.fire_trail | 5 → 3 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | frozen | 6 → 3 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | hops.durum yandakine geçerek | 13 → 10 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | hops.mermi sekerek | 8 → 6 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | hops.total | 30 → 25 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | roots.using_1_applications | 29 → 36 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | roots.using_2_applications | 3 → 4 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | roots.using_3_applications | 1 → 0 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | roots.using_4_applications | 1 → 0 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | roots.using_6_applications | 6 → 3 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | roots.using_8_applications | 1 → 0 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | roots.using_9_applications | 0 → 1 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | roots.with_applications | 53 → 56 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | seconds | 6.5 → 12.4 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | spread_status | 199 → 175 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | status_instances | 92 → 73 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | statuses.bleed | 24 → 22 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | statuses.blind | 20 → 13 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | statuses.burn | 30 → 27 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | statuses.charge | 8 → 9 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | statuses.cold | 20 → 15 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | statuses.poison | 56 → 46 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | statuses.shred | 20 → 15 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | statuses.slow | 28 → 23 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / stress-24 | statuses.wet | 22 → 18 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / trail-spurious-cell-drop | fields.fire_trail | 1 → 0 | B2 fixed: first last_drop is snapped, no initial field |
+| replay / user-trail-ice | applications | 56 → 49 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / user-trail-ice | by_element.fire | 144.9 → 138.6 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / user-trail-ice | by_element.ice | 39.69 → 31.752 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / user-trail-ice | by_tower.0 | 184.59 → 170.352 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / user-trail-ice | damage | 184.59 → 170.352 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / user-trail-ice | damage_capped | 184.59 → 170.352 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / user-trail-ice | fields.fire_trail | 11 → 8 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / user-trail-ice | roots.using_1_applications | 56 → 49 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / user-trail-ice | roots.with_applications | 56 → 49 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / user-trail-ice | statuses.slow | 35 → 28 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-01 | applications | 42 → 40 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-01 | by_element.fire | 132.3 → 130.5 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-01 | by_tower.0 | 160.083 → 158.283 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / v4-01 | damage | 160.083 → 158.283 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-01 | damage_capped | 160.083 → 158.283 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-01 | fields.fire_trail | 14 → 12 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-01 | roots.using_1_applications | 42 → 40 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-01 | roots.with_applications | 42 → 40 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-02 | applications | 115 → 112 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-02 | by_element.fire | 262.44909 → 259.74909 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-02 | by_tower.0 | 335.744393 → 333.044393 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / v4-02 | damage | 335.744393 → 333.044393 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-02 | damage_capped | 335.744393 → 333.044393 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-02 | fields.fire_trail | 14 → 11 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-02 | roots.using_1_applications | 80 → 77 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-02 | roots.with_applications | 87 → 84 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-03 | applications | 121 → 116 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-03 | by_element.fire | 212.4 → 207.9 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-03 | by_tower.0 | 301.253121 → 296.753121 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / v4-03 | damage | 301.253121 → 296.753121 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-03 | damage_capped | 301.253121 → 296.753121 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-03 | roots.using_1_applications | 81 → 76 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-03 | roots.with_applications | 89 → 84 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-04 | applications | 123 → 112 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-04 | by_element.fire | 214.2 → 204.3 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-04 | by_tower.0 | 315.665492 → 305.765492 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / v4-04 | damage | 315.665492 → 305.765492 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-04 | damage_capped | 315.665492 → 305.765492 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-04 | fields.fire_trail | 14 → 13 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-04 | roots.using_1_applications | 83 → 72 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-04 | roots.with_applications | 91 → 80 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-05 | applications | 132 → 127 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-05 | bleed_walk | 109.1475 → 110.4075 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-05 | by_element.blood | 109.1475 → 110.4075 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-05 | by_element.electric | 66.833826 → 69.038826 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-05 | by_element.fire | 303.3 → 292.5 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-05 | by_element.poison | 200.97 → 207.9 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-05 | by_tower.0 | 680.251326 → 662.19649 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / v4-05 | damage | 680.251326 → 679.846326 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-05 | damage_capped | 663.99649 → 662.19649 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-05 | fields.fire_trail | 10 → 9 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-05 | roots.using_1_applications | 107 → 102 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-05 | roots.with_applications | 112 → 107 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-05 | statuses.burn | 14 → 15 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-06 | by_tower.0 | 122.4 → 108.4 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / v4-07 | by_tower.0 | 120.015 → 120 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / v4-09 | applications | 40 → 37 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-09 | by_element.fire | 99.9 → 97.2 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-09 | by_tower.0 | 99.9 → 96.47625 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / v4-09 | by_tower.1 | 165.76875 → 151.62375 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / v4-09 | damage | 265.66875 → 262.96875 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-09 | damage_capped | 249.9 → 248.1 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-09 | roots.using_1_applications | 40 → 37 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-09 | roots.with_applications | 40 → 37 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-09-alone | by_tower.0 | 176.085 → 176.0025 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / v4-12 | applications | 121 → 115 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-12 | by_element.fire | 75.469494 → 72.823494 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-12 | by_tower.0 | 480.811449 → 478.165449 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / v4-12 | damage | 480.811449 → 478.165449 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-12 | damage_capped | 480.811449 → 478.165449 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-12 | fields.fire_trail | 16 → 13 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-12 | roots.using_1_applications | 71 → 65 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-12 | roots.with_applications | 79 → 73 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-15 | applications | 34 → 31 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-15 | by_element.fire | 84.42 → 82.53 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-15 | by_tower.0 | 223.02 → 219.54 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / v4-15 | damage | 223.02 → 221.13 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-15 | damage_capped | 220.8 → 219.54 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-15 | fields.fire_trail | 11 → 9 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-15 | roots.using_1_applications | 34 → 31 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-15 | roots.with_applications | 34 → 31 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-17 | by_tower.0 | 169.65 → 169.635 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / v4-18 | by_tower.0 | 207.765 → 206.22 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / v4-21 | applications | 82 → 73 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-21 | by_element.fire | 212.85 → 205.65 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-21 | by_element.poison | 94.5 → 78.75 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-21 | by_tower.0 | 307.35 → 282 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / v4-21 | damage | 307.35 → 284.4 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-21 | damage_capped | 300 → 282 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-21 | fields.fire_trail | 12 → 10 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-21 | roots.using_1_applications | 82 → 73 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-21 | roots.with_applications | 82 → 73 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-21 | statuses.poison | 34 → 30 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-22 | applications | 93 → 90 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-22 | by_element.fire | 127.140363 → 125.250363 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-22 | by_tower.0 | 784.020058 → 707.806426 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+| replay / v4-22 | damage | 784.020058 → 782.130058 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-22 | fields.fire_trail | 10 → 8 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-22 | roots.using_1_applications | 47 → 44 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / v4-22 | roots.with_applications | 55 → 52 | Expected B1/B2 repair cascade: movement resync before bleed/trails/propagation and snapped first trail; E1-E4 remain |
+| replay / wet-electric | by_tower.1 | 186.57 → 185.07 | Expected callback contract: Godot tower damage is now capped HP damage (combat.gd:131) |
+
+### New and resolved parity discrepancies
+
+No original case that previously matched total damage or all compared metrics lost that whole-case equality. Grid damage equality improves 42→44/99; replay stays 67/99. Grid all-metric equality improves 35→39/99; replay 57→60/99. New individual mismatching cells do appear inside already divergent recipes: 16 grid and 26 replay cells, enumerated below. They occur in fire/trail/propagation cases, consistent with B1/B2 repair cascades and remaining E1-E4 differences; no additional isolated Godot-only defect was established. This source/path explanation does not establish the exact causal share of each fix. All resolved cells are also retained in results/parity-transitions.json.
+
+| Mode / case | Newly differing metric | Before Python / Godot | After Python / Godot | Reason |
+|---|---|---|---|---|
+| grid / v4-22 | status_instances | 10 / 10 | 10 / 11 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| grid / stress-24 | hops.parça | 1 / 1 | 1 / 2 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| grid / stress-24 | host_attacks | 3 / 3 | 3 / 4 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| grid / stress-24 | roots.using_3_applications | 3 / 3 | 3 / 0 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| grid / stress-24 | roots.using_9_applications | 0 / 0 | 0 / 1 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| grid / stress-24 | statuses.charge | 9 / 9 | 9 / 12 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| grid / shuffle-0 | status_instances | 10 / 10 | 10 / 11 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| grid / shuffle-1 | status_instances | 10 / 10 | 10 / 11 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| grid / shuffle-2 | status_instances | 10 / 10 | 10 / 11 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| grid / shuffle-3 | status_instances | 10 / 10 | 10 / 11 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| grid / shuffle-4 | status_instances | 10 / 10 | 10 / 11 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| grid / shuffle-5 | status_instances | 10 / 10 | 10 / 11 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| grid / deep3 | hops.buz parçası düşer | 3 / 3 | 3 / 2 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| grid / deep3 | shards | 2 / 2 | 2 / 1 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| grid / deep3 | statuses.charge | 61 / 61 | 61 / 62 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| grid / deep4 | roots.using_3_applications | 0 / 0 | 0 / 1 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| replay / v4-22 | roots.using_1_applications | 47 / 47 | 47 / 44 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| replay / v4-22 | roots.with_applications | 55 / 55 | 55 / 52 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| replay / stress-24 | roots.using_2_applications | 3 / 3 | 3 / 4 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| replay / stress-24 | roots.using_9_applications | 0 / 0 | 0 / 1 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| replay / stress-24 | statuses.bleed | 24 / 24 | 24 / 22 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| replay / stress-24 | statuses.burn | 30 / 30 | 30 / 27 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| replay / stress-24 | statuses.cold | 20 / 20 | 20 / 15 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| replay / stress-24 | statuses.shred | 20 / 20 | 20 / 15 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| replay / stress-24 | statuses.slow | 28 / 28 | 28 / 23 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| replay / shuffle-0 | roots.using_1_applications | 47 / 47 | 47 / 44 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| replay / shuffle-0 | roots.with_applications | 55 / 55 | 55 / 52 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| replay / shuffle-1 | roots.using_1_applications | 47 / 47 | 47 / 44 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| replay / shuffle-1 | roots.with_applications | 55 / 55 | 55 / 52 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| replay / shuffle-2 | roots.using_1_applications | 47 / 47 | 47 / 44 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| replay / shuffle-2 | roots.with_applications | 55 / 55 | 55 / 52 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| replay / shuffle-3 | roots.using_1_applications | 47 / 47 | 47 / 44 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| replay / shuffle-3 | roots.with_applications | 55 / 55 | 55 / 52 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| replay / shuffle-4 | roots.using_1_applications | 47 / 47 | 47 / 44 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| replay / shuffle-4 | roots.with_applications | 55 / 55 | 55 / 52 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| replay / shuffle-5 | roots.using_1_applications | 47 / 47 | 47 / 44 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| replay / shuffle-5 | roots.with_applications | 55 / 55 | 55 / 52 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| replay / deep4 | hops.durum yandakine atlayarak | 23 / 23 | 23 / 24 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| replay / deep4 | hops.total | 26 / 26 | 26 / 27 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| replay / deep4 | roots.using_2_applications | 3 / 3 | 3 / 2 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| replay / deep4 | roots.using_4_applications | 0 / 0 | 0 / 1 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |
+| replay / deep4 | statuses.charge | 59 / 59 | 59 / 60 | B1/B2 repair-associated movement/trail cascade in an already divergent E1-E4 case |

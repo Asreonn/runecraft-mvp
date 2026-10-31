@@ -179,6 +179,16 @@ def run_economy():
     before = w.stats["stones"]
     w.kill(e, sim.Ctx(gen=0, budget={"left": 16}))
     check("two crystal marks on one enemy crystallise once", w.stats["stones"] - before == 1 + int(mark.params["crystal"]), str(w.stats["stones"] - before))
+    # one income cap per producing Mana node (parity findings N1-N3)
+    c = resolver.compile_recipe("mana3")
+    ops = list(resolver._walk(c.ops))
+    sip = [o for o in ops if o.family == "ManaSiphon"][0]
+    mk = [o for o in ops if o.family == "ApplyStatus" and o.params.get("status") == "mana_mark"][0]
+    check("N3: siphon and mark of one Mana node share one cap", sim.mana_node_key(0, sip.uid) == sim.mana_node_key(0, mk.uid), f"{sip.uid} {mk.uid}")
+    check("N1: equal recipes on two towers have separate caps", sim.mana_node_key(0, mk.uid) != sim.mana_node_key(1, mk.uid))
+    c = resolver.compile_recipe("fire1{fire_hit:[mana1,mana1]}")
+    sips = [o for o in resolver._walk(c.ops) if o.family == "ManaSiphon"]
+    check("N2: two Mana donors are two producing nodes (two caps)", len(sips) == 2 and sim.mana_node_key(0, sips[0].uid) != sim.mana_node_key(0, sips[1].uid), str([o.uid for o in sips]))
 
 
 if __name__ == "__main__":

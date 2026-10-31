@@ -57,7 +57,7 @@ Son güncelleme: 2026-10-31
 ## E. Revizyon görevi (2026-10-31, "Hata Düzeltme, Mekanik Revizyon ve Dokümantasyon Senkronizasyonu")
 Bu bölümdeki kararlar önceki belgelerin önüne geçer.
 - [!] 1. Kamera: 90° zorunlu değil (eski varsayım belgelerden düzeltildi); 45° varsayılan ama onaylı değil. Settings → "Camera angle (testing)": 45° / 30° / zoom'a bağlı — karar sende
-- [x] 2. Mana rünü kalıyor: overkill manaya dönmez, öldürücü vuruş sifonu sayılır, Mana düğümü başına gelir tavanı (2,5–11/sn, fazlası %25), tek kristal, HUD gerçek gelir hızı + kule kartında mana/sn. 8 dalga ölçümü (yolun başında): toplam mana G1 +%11, G3 +%35, G5 +%62; sınırsız döngü yok (`reports/mana_economy.md`). Değerler geçici
+- [x] 2. Mana rünü kalıyor: overkill manaya dönmez, öldürücü vuruş sifonu sayılır, Mana düğümü başına gelir tavanı (2,5–11/sn, fazlası %25), tek kristal, HUD gerçek gelir hızı + kule kartında mana/sn. 8 dalga ölçümü (yolun başında): toplam mana G1 +%10, G3 +%30, G5 +%51; sınırsız döngü yok (`reports/mana_economy.md`). Değerler geçici
 - [x] 3. Shop çarpansal: rün ×1,15/alım (tavan ×3, dalga başına soğuma ½), kule 4×1,25^n, satış = min(ödenen, yeniden kurma)×½. Canlı fiyat, gerçek tahsilat, save/load ile korunur (testlerle). Oranlar geçici
 - [x] 4.1 socket_output(): dolu envanterde artık işlem reddedilir, rün kaybolmaz (test)
 - [x] 4.2 Tüm rün hareketleri işlemsel (`scripts/rune_store.gd`): iptal, ana rün değiştirme, bekleyen geri alma, sökme, teslim, combine, satış — kayıp/çoğalma yok (1448/1448 kontrol)
@@ -69,7 +69,8 @@ Bu bölümdeki kararlar önceki belgelerin önüne geçer.
 - [x] 8. Roguelike sistemler gelecek kapsamı olarak belgelendi; hiçbiri iptal değil
 - [~] 9. UI/teknik: game.gd'den rune_store/economy/save_system ayrıldı; paneller kenarlara sabitli ve 9-slice; partiküller pause/hıza uyuyor; fiyatlar canlı. Kalan: hud.gd hâlâ büyük, geniş/dar oran ekran görüntüsüyle kontrol ediliyor
 - [x] 10. Dokümanlar: yeni `design/DECISIONS.md` (öncelikli), README baştan yazıldı, PROJECT_OVERVIEW, RUNE_MECHANICS (Mana, ekonomi, gelecek), raporlar yeniden üretildi, GDD'lere durum notu; yüksek zemin bonusu "onay bekliyor"; .vox kaynaklarının repoda olmadığı açık
-- [~] 11. Testler ve kabul kriterleri; 12. tek kapsamlı nihai rapor
+- [x] 11. Testler: Godot invariant 1448/1448 (main'de 703/1134), Python 130/130, eşdeğerlik raporu + yeniden çalıştırma, ekonomi ölçümü, 21:9 / 4:3 / kamera ekran görüntüleri
+- [x] 12. Nihai rapor (sohbette) — repo commit 94a1c1a
 
 ## Codex işleri
 | İş | Hesap | Durum |
@@ -81,4 +82,5 @@ Bu bölümdeki kararlar önceki belgelerin önüne geçer.
 | Kod temizliği (`codex-mvp/cleanup_code`) | c2 (c1 limit) | [x] 0 parse hatası, uyarı 37→33, entegre |
 | Dosya manifesti + repo README (`codex-mvp/cleanup_files`) | c2 | [x] 298 tut / 142 at |
 | Invariant testleri (`codex-mvp/invariant_tests`) | c1 | [x] main: 703/1134 → düzeltmelerle 1448/1448 |
-| Godot ↔ Python eşdeğerlik (`codex-mvp/parity`) | c2 | [x] rapor + 3 hata (hepsi düzeltildi) |
+| Godot ↔ Python eşdeğerlik (`codex-mvp/parity`) | c2 | [x] rapor + 3 hata düzeltildi |
+| Eşdeğerlik yeniden çalıştırma (commit 94a1c1a) | c2 | [x] B1/B2/B3 düzeldi (doğrulandı); yeni N1–N3 (gelir tavanı anahtarı) bulundu → iki motorda düzeltildi, Python testleri eklendi |

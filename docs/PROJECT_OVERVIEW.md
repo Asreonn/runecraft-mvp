@@ -18,7 +18,7 @@ Where to read further:
 godot --path .                                                # play
 godot --path . -- --seed 42                                   # a specific random map
 bash tests/run.sh                                             # headless invariant suite (1448 checks)
-python3 design/rune_mechanics/mechanics/test_mechanics.py     # rule compiler + reference sim (127 checks)
+python3 design/rune_mechanics/mechanics/test_mechanics.py     # rule compiler + reference sim (130 checks)
 godot --headless --fixed-fps 60 --path . -- --econ mana5 --seed 3 --waves 8    # economy probe
 godot --headless --path . -- --demo --auto --quit-after 120   # scripted session, AUTO line per wave
 ```
@@ -83,7 +83,7 @@ Command-line flags (after `--`) are parsed in `scripts/game.gd` `_parse_args`:
 | Mana rune economy | implemented, **provisional numbers**; measured in 8 real waves (`DECISIONS.md`) |
 | Rune readability | first pass: inspector, compact in-world donors (≤4 + "+N"), slot badges, ability donor counts |
 | Camera angle | **evaluating** (45° default, 30°, zoom-based option in Settings) |
-| Godot ↔ Python parity | compiler identical (188/188 comparisons); combat partially equal, differences classified in `docs/PARITY_REPORT.md`; its three bugs (B1, B2 in Godot; B3 in Python) are fixed |
+| Godot ↔ Python parity | compiler identical; combat partially equal, differences classified in `docs/PARITY_REPORT.md`. B1, B2 (Godot) and B3 (Python) are fixed and confirmed by a re-run (`docs/PARITY_RERUN_SUMMARY.md`); the re-run's income-cap findings N1–N3 are fixed afterwards in both engines (covered by Python unit tests; no harness re-run yet) |
 | High-ground +1 range | implemented, **awaiting approval** |
 
 ## Known gaps / limitations

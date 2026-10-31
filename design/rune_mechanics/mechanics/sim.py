@@ -203,14 +203,12 @@ class World:
                 self.make_field(e.x, o, ctx)
             elif f == "ForceMove":
                 self.push(e, o, ctx)
-        siphons = [o for o in payload if o.family == "ManaSiphon"]
-        if siphons:
-            siph = sum(o.params["siphon"] for o in siphons)
-            raw = (self.stats["damage_capped"] - before + ctx.event_damage) * siph   # overkill never becomes mana
-            src = siphons[0]
-            gained = self.mana_income(raw, (ctx.tower, src.uid), src.grade)
-            self.stats["mana"] += gained
-            self.stats["mana_siphon"] += gained
+        dealt = self.stats["damage_capped"] - before + ctx.event_damage      # overkill never becomes mana
+        for o in payload:
+            if o.family == "ManaSiphon":            # one soft cap per producing Mana node
+                gained = self.mana_income(dealt * o.params["siphon"], mana_node_key(ctx.tower, o.uid), o.grade)
+                self.stats["mana"] += gained
+                self.stats["mana_siphon"] += gained
 
     def mana_income(self, amount, src, grade):
         """Soft cap per producing Mana node: above income_cap mana/s only over_cap_eff of the excess counts."""
@@ -246,7 +244,7 @@ class World:
                  if k[0] == "mana_mark" and abs(m.x - e.x) <= v["op"].params["r"]]
         if marks:
             best = max(marks, key=lambda v: v["op"].params["mark_pct"])
-            g = self.mana_income(real * best["op"].params["mark_pct"], ("mark", best["op"].uid), best["op"].grade)
+            g = self.mana_income(real * best["op"].params["mark_pct"], mana_node_key(best.get("tower", 0), best["op"].uid), best["op"].grade)
             s["mana"] += g
             s["mana_mark"] += g
         s["by_element"][element] = s["by_element"].get(element, 0) + amount
@@ -321,7 +319,7 @@ class World:
                 e.st[key] = {"op": o, "dps": p["dps"], "left": dur, "next": 1.0, "gen": ctx.gen,
                              "last_drop": e.x, "tower": ctx.tower}
         elif s == "mana_mark":
-            e.st[key] = {"op": o, "left": p["dur"]}
+            e.st[key] = {"op": o, "left": p["dur"], "tower": ctx.tower}
             subs = o.slots.get("mark", [])
             if subs:
                 self.run_event(subs, e, e.x, Ctx(gen=ctx.gen, budget=ctx.budget, tag="apply", tower=ctx.tower), carrier="status_apply")
@@ -550,6 +548,11 @@ class World:
 
     def _hop(self, verb):
         self.stats["hops"][verb] = self.stats["hops"].get(verb, 0) + 1
+
+
+def mana_node_key(tower, uid):
+    """One income cap per producing Mana rune node: tower + the node's recipe path (uid without the op key)."""
+    return (tower, uid.rsplit(".", 1)[0])
 
 
 def _dmg_op(amount, element, tag):

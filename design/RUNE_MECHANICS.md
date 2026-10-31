@@ -218,11 +218,13 @@ Bu örneklerin simülasyon sayıları ve rün açıklamaları `reports/mechanics
   - Sifon ve işaret geliri, onu üreten Mana düğümü başına saniyede 2,5 / 4 / 6 / 8 / 11 manaya kadar tam sayılır
     (G1–G5).
   - Fazlasının yalnızca %25'i sayılır.
+  - Düğüm, kule ve tarifteki yeriyle tanımlanır. Bir düğümün sifonu ve işareti aynı tavanı paylaşır; iki ayrı Mana
+    donörü ya da aynı tarifli iki kule ayrı tavan kullanır.
   - Bu sınır, büyük alan hasarıyla sınırsız mana döngüsünü engeller.
 - Aynı düşmandaki birden çok kristal işareti yalnızca bir kez kristalleşir.
 - HUD gerçek gelir hızını, kule kartı da kule başına mana/sn'yi gösterir.
-- Oyun içi ölçüm (8 dalga, `reports/mana_economy.md`): yolun başındaki Mana kulesi toplam manayı G1'de ~%11, G3'te ~%35,
-  G5'te ~%62 artırır. Arkada duran Mana kulesi çok daha az kazanır. Sınırsız döngü yoktur.
+- Oyun içi ölçüm (8 dalga, `reports/mana_economy.md`): yolun başındaki Mana kulesi toplam manayı G1'de ~%10, G3'te ~%30,
+  G5'te ~%51 artırır. Arkada duran Mana kulesi çok daha az kazanır. Sınırsız döngü yoktur.
 
 ## 9. Kod ve dosyalar (hepsi `asset-work/claude-tileset/runes/` altında)
 

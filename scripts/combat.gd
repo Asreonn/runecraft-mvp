@@ -89,17 +89,17 @@ func apply_payload(payload: Array, e, ctx: Dictionary) -> void:
 				make_field(e.tile_pos(), o, ctx)
 			"ForceMove":
 				push(e, o, ctx)
-	var siph := 0.0
-	var src = null
+	# overkill never becomes mana; every producing Mana node has its own soft cap (economy.gd)
+	var dealt := damage_real - before + float(ctx.event_damage)
 	for o in payload:
 		if o.family == "ManaSiphon":
-			siph += float(o.params.siphon)
-			if src == null:
-				src = o
-	if siph > 0.0:
-		# overkill never becomes mana; income is soft-capped per producing Mana node (economy.gd)
-		var raw := (damage_real - before + float(ctx.event_damage)) * siph
-		game.economy.rune_income(raw, "%d|%s" % [int(ctx.tower), src.uid], int(src.grade), int(ctx.tower), e.global_position, "siphon")
+			game.economy.rune_income(dealt * float(o.params.siphon), mana_node_key(int(ctx.tower), o.uid), int(o.grade), int(ctx.tower), e.global_position, "siphon")
+
+
+## One income cap per producing Mana rune node: tower + the node's path in the recipe (uid without the op key),
+## so siphon and mark of the same node share it, and equal recipes on different towers do not.
+func mana_node_key(tower: int, uid: String) -> String:
+	return "%d|%s" % [tower, uid.rsplit(".", true, 1)[0]]
 
 
 # ------------------------------------------------------------------ damage / death
@@ -125,7 +125,7 @@ func deal(e, amount: float, element: String, ctx: Dictionary) -> void:
 			if dist_t(m, e) <= float(v.op.params.r) and (best == null or float(v.op.params.mark_pct) > float(best.op.params.mark_pct)):
 				best = v
 	if best != null:
-		game.economy.rune_income(real * float(best.op.params.mark_pct), "mark|" + str(best.op.uid), int(best.op.grade), int(best.tower), e.global_position, "mark")
+		game.economy.rune_income(real * float(best.op.params.mark_pct), mana_node_key(int(best.tower), best.op.uid), int(best.op.grade), int(best.tower), e.global_position, "mark")
 	e.hp -= amount
 	e.flash = 0.12
 	game.record_damage(int(ctx.tower), real)
