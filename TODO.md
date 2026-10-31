@@ -50,8 +50,8 @@ Son güncelleme: 2026-10-31
 - [x] Penpot tasarımı Godot HUD'unda: 124 Penpot export'u (2×) → `assets/ui/`, 9-slice StyleBox (`ui/tex_box.gd`), Cinzel başlık fontu
 
 ## D. Teslim
-- [~] Codex ile temizlik: c1 kod (ölü kod, kalan Türkçe metinler), c2 dosya manifesti + .gitignore + README
-- [ ] GitHub'a temiz, private yükleme
+- [x] Codex ile temizlik: 21 script temizlendi, 3 kullanılmayan dosya silindi; 142 kullanılmayan dosya release dışı (harita 40 tohumda birebir, oyun/kayıt sonuçları aynı)
+- [x] GitHub'a temiz, private yükleme: https://github.com/Asreonn/runecraft-mvp (release kopyası `asset-work/claude-tileset/release/runecraft-mvp/`)
 
 ## Codex işleri
 | İş | Hesap | Durum |
@@ -60,5 +60,5 @@ Son güncelleme: 2026-10-31
 | Harita üreticisi v2 (`codex-mvp/map_gen_v2`) | c2 | [x] 300/300 seed, entegre |
 | Rün metinleri yerelleştirme TR/EN (`codex-mvp/rune_lib_i18n`) | c1 | [x] 70.738/70.738 test, entegre |
 | Harita v3: doğal nehir, tile başına ağaç, orman derinliği (`codex-mvp/map_gen_v3`) | c1 | [x] 300/300 seed, ort. 45 ms, entegre |
-| Kod temizliği (`codex-mvp/cleanup_code`) | c1 | [~] çalışıyor |
-| Dosya manifesti + repo README (`codex-mvp/cleanup_files`) | c2 | [~] çalışıyor |
+| Kod temizliği (`codex-mvp/cleanup_code`) | c2 (c1 limit) | [x] 0 parse hatası, uyarı 37→33, entegre |
+| Dosya manifesti + repo README (`codex-mvp/cleanup_files`) | c2 | [x] 298 tut / 142 at |
