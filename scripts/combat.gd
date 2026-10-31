@@ -137,10 +137,12 @@ func deal(e, amount: float, element: String, ctx: Dictionary) -> void:
 func kill(e, ctx: Dictionary) -> void:
 	e.alive = false
 	game.on_enemy_killed(e)
-	var root := ctx_new(ctx.tower, 0)
+	# Every death effect is credited to the tower that OWNS it (the freezer, the poisoner, the marker), not to the
+	# tower that happened to land the killing blow (damage, Mana caps and DPS stay attributable).
 	# frozen-death shards: only when the freezing op carries shards (source authority)
 	if game.now < e.frozen_until and e.frozen_by != null and float(e.frozen_by.params.get("shards", 0)) > 0:
 		var op = e.frozen_by
+		var root := ctx_new(int(e.frozen_tower) if e.frozen_tower >= 0 else int(ctx.tower), 0)
 		var subs: Array = op.slots.get("shards", [])
 		var seek := subs.any(func(x): return x.family == "ChainTransfer")
 		var hit := {e.eid: true}
@@ -160,9 +162,10 @@ func kill(e, ctx: Dictionary) -> void:
 			var tgt = nearest(e.tile_pos(), {e.eid: true}, 1.5)
 			if tgt != null:
 				var stacks := maxi(1, ceili(float(v.stacks) * float(v.op.params.contagion)))
+				var proot := ctx_new(int(v.tower), 0)
 				game.vfx.link(e.global_position, tgt.global_position, "poison", "bulaşma")
-				apply_status(tgt, v.op, child_ctx(root, 1, 1.0), stacks)
-				run_event(v.op.slots.get("infect", []), tgt, tgt.tile_pos(), child_ctx(root, 1, 1.0))
+				apply_status(tgt, v.op, child_ctx(proot, 1, 1.0), stacks)
+				run_event(v.op.slots.get("infect", []), tgt, tgt.tile_pos(), child_ctx(proot, 1, 1.0))
 	# mana crystal: several marks on one enemy still crystallise once (the best one)
 	var cv = null
 	for v in e.get_all("mana_mark"):
@@ -173,7 +176,7 @@ func kill(e, ctx: Dictionary) -> void:
 		var subs2: Array = cv.op.slots.get("crystal", [])
 		var tgt2 = nearest(e.tile_pos(), {e.eid: true}, 1.0)
 		if not subs2.is_empty() and tgt2 != null:
-			run_event(subs2, tgt2, tgt2.tile_pos(), child_ctx(root, 1, 1.0))
+			run_event(subs2, tgt2, tgt2.tile_pos(), child_ctx(ctx_new(int(cv.tower), 0), 1, 1.0))
 
 
 # ------------------------------------------------------------------ statuses
@@ -181,7 +184,12 @@ func kill(e, ctx: Dictionary) -> void:
 func apply_status(e, o: Dictionary, ctx: Dictionary, stacks := 1) -> void:
 	var p: Dictionary = o.params
 	var s: String = p.status
+	# Damage-over-time statuses are one instance PER TOWER (two towers with the same recipe both burn / poison /
+	# bleed, each with its own clock and credit); utility statuses (slow, wet, shred, blind, lit, mark) keep one
+	# instance per recipe node and the strongest wins, so they never multiply.
 	var key: String = s + "|" + o.uid
+	if s in ["burn", "poison", "bleed"]:
+		key = "%s|t%d|%s" % [s, int(ctx.tower), o.uid]
 	var cur = e.st.get(key)
 	var now: float = game.now
 	match s:
@@ -290,6 +298,7 @@ func apply_status(e, o: Dictionary, ctx: Dictionary, stacks := 1) -> void:
 func freeze(e, o: Dictionary, dur: float, ctx: Dictionary, nova: bool) -> void:
 	e.frozen_until = maxf(e.frozen_until, game.now + dur)
 	e.frozen_by = o
+	e.frozen_tower = int(ctx.tower)
 	game.vfx.freeze(e, dur)
 	var subs: Array = o.slots.get("freeze", [])
 	if not subs.is_empty() and not nova:
@@ -305,7 +314,7 @@ func tick_statuses(e, dt: float) -> void:
 		var s: String = key.get_slice("|", 0)
 		if s == "burn" or s == "poison":
 			v.next -= dt
-			if v.next <= 0.0001 and v.left > -dt:
+			if v.next <= 1e-9 and v.left > -dt:          # same one-second contract as sim.py (parity R2)
 				v.next += 1.0
 				var op: Dictionary = v.op
 				var dmg: float
@@ -452,7 +461,7 @@ func propagate(p: Dictionary, carry: Array, target, pos: Vector2, ctx: Dictionar
 					break
 				visited[n.eid] = true
 				var c := child_ctx(ctx, ctx.gen + 1, float(ctx.power) * pow(float(P.power), k))
-				game.vfx.link(cur.global_position, n.global_position, _carry_element(carry), p.get("verb", ""))
+				game.vfx.link(cur.global_position, n.global_position, _carry_element(carry), (str(p.get("verb", "")) if str(p.get("verb", "")) != "" else "seker"))
 				apply_payload(carry, n, c)
 				run_event(p.slots.get("jump", []), n, n.tile_pos(), c)
 				cur = n

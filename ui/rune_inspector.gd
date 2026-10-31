@@ -1,138 +1,195 @@
-extends PanelContainer
-## Rune inspector: the full graft tree of one rune as a collapsible tree, so recipes with many / nested donors
-## stay readable. Root = the main rune; under it every ability (open, or locked with its unlock grade); under an
-## ability every donor rune with what it contributes there (compiled op texts), anything that was not carried
-## (✗ + reason), and — nested — the donor's own grafted abilities. Built from the same compiled program the
-## combat uses, so the view is reproducible for any recipe.
-## Open with: right-click a rune slot, or "Inspect" on the tower card.
+extends Control
+## Floating rune inspector: a carved stone panel in the middle of the screen with the rune's FULL radial tree
+## (every nested graft) and, on the right, a stone plaque with what the picked node does. The compact tree in the
+## Craft tab shows abilities + direct donors; this one shows the whole recipe — same model, two depths.
+## Open: right-click any rune, "Inspect" on the tower card, "Details" in the Craft tab.
+## Close: ✕, Esc, or a click outside the panel. While open, a veil blocks the world (no accidental building or
+## selecting) and hotkeys are swallowed except pause / speed; the game is NOT paused (Space pauses as usual).
+## The shown rune is re-validated on every game change: if its tower now holds another rune the view follows it;
+## if the rune left the player's hands (sold, consumed, load) the inspector closes.
 
 const S := preload("res://ui/style.gd")
 const UISkin := preload("res://ui/skin.gd")
+const RV := preload("res://ui/rune_view.gd")
+const RuneTree := preload("res://ui/rune_tree.gd")
+const T := preload("res://ui/i18n.gd")
 
 var game
-var tree: Tree
+var hud
+var panel: Panel
+var tree
 var title: Label
-var summary: Label
+var subtitle: Label
+var icon_rect: Control
+var detail: RichTextLabel
+var close_btn: Button
 var node = null
+var source := {}
+var item = null
+var picked_item = null
+var _sig := ""                    # content signature of the shown rune (in-place edits rebuild the view)
 
 
-func _init(g) -> void:
+func _init(g, h) -> void:
 	game = g
-	add_theme_stylebox_override("panel", UISkin.box("chip_rune", Vector4(-1, -1, -1, -1), Vector4(16, 12, 16, 14)))
-	custom_minimum_size = Vector2(660, 0)
-	mouse_filter = Control.MOUSE_FILTER_STOP
+	hud = h
+	set_anchors_preset(Control.PRESET_FULL_RECT)
+	mouse_filter = Control.MOUSE_FILTER_STOP           # the veil: clicks outside the panel close it
 	visible = false
-	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 6)
-	add_child(v)
-	var h := HBoxContainer.new()
-	title = S.label("", 20, S.TRIM_LIGHT, "head")
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	h.add_child(title)
-	var close := Button.new()
-	close.text = "✕"
-	close.flat = true
-	close.add_theme_color_override("font_color", S.TEXT_DIM)
-	close.pressed.connect(hide_inspector)
-	h.add_child(close)
-	v.add_child(h)
-	summary = S.label("", 12, S.TEXT_MUTED)
-	summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	summary.custom_minimum_size = Vector2(628, 0)      # a width bound keeps the wrapped label's height sane
-	v.add_child(summary)
-	tree = Tree.new()
-	tree.hide_root = false
-	tree.custom_minimum_size = Vector2(628, 520)
-	tree.add_theme_font_override("font", S.font("body"))
-	tree.add_theme_font_size_override("font_size", 13)
-	tree.add_theme_color_override("font_color", S.TEXT_DIM)
-	tree.add_theme_color_override("font_selected_color", Color.WHITE)
-	tree.add_theme_constant_override("v_separation", 4)
-	tree.add_theme_constant_override("item_margin", 18)
-	var empty := StyleBoxEmpty.new()
-	tree.add_theme_stylebox_override("panel", empty)
-	tree.add_theme_stylebox_override("focus", empty)
-	v.add_child(tree)
-	var hint := S.label("Click a ▸ to fold / unfold. Grade pips show G1–G5; ✗ = not carried, ◇ = locked.", 11, S.TEXT_MUTED)
-	v.add_child(hint)
+	var veil := ColorRect.new()
+	veil.color = Color(0.02, 0.02, 0.04, 0.55)
+	veil.set_anchors_preset(Control.PRESET_FULL_RECT)
+	veil.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(veil)
+	panel = Panel.new()
+	panel.add_theme_stylebox_override("panel", UISkin.box("panel_float", Vector4(34, 34, 34, 34)))
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(panel)
+	# header: rune on its grade light, name, one line of identity
+	icon_rect = Control.new()
+	icon_rect.custom_minimum_size = Vector2(76, 76)
+	icon_rect.draw.connect(_draw_icon)
+	panel.add_child(icon_rect)
+	title = S.label("", 28, S.TRIM_LIGHT, "head")
+	panel.add_child(title)
+	subtitle = S.label("", 14, S.TEXT_MUTED, "medium")
+	subtitle.clip_text = true
+	subtitle.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	panel.add_child(subtitle)
+	close_btn = Button.new()
+	UISkin.button(close_btn, "coin")
+	close_btn.icon = UISkin.tex("icon_close")
+	close_btn.expand_icon = true
+	close_btn.add_theme_constant_override("icon_max_width", 22)
+	close_btn.custom_minimum_size = Vector2(44, 44)
+	close_btn.tooltip_text = T.t("close_hint")
+	close_btn.pressed.connect(hide_inspector)
+	panel.add_child(close_btn)
+	tree = RuneTree.new(game)
+	tree.compact = false
+	tree.picked.connect(func(it): picked_item = it; _show_detail(it))
+	tree.hovered.connect(func(it): _show_detail(it if it != null else picked_item))
+	panel.add_child(tree)
+	var plaque := PanelContainer.new()
+	plaque.name = "Plaque"
+	plaque.add_theme_stylebox_override("panel", UISkin.box("plaque", Vector4(22, 22, 22, 22), Vector4(20, 18, 20, 18)))
+	panel.add_child(plaque)
+	detail = RichTextLabel.new()
+	detail.bbcode_enabled = true
+	detail.scroll_active = true
+	detail.add_theme_font_override("normal_font", S.font("body"))
+	detail.add_theme_font_override("bold_font", S.font("bold"))
+	detail.add_theme_font_size_override("normal_font_size", 15)
+	detail.add_theme_font_size_override("bold_font_size", 16)
+	detail.add_theme_color_override("default_color", S.TEXT_DIM)
+	detail.add_theme_constant_override("line_separation", 3)
+	plaque.add_child(detail)
+	resized.connect(_layout)
 
 
-func _unhandled_input(ev: InputEvent) -> void:
-	if visible and ev is InputEventKey and ev.pressed and ev.keycode == KEY_ESCAPE:
-		hide_inspector()
-		get_viewport().set_input_as_handled()
+func _layout() -> void:
+	var vp := size
+	var w := minf(1240.0, vp.x - 64.0)
+	var h := minf(vp.y - 64.0, maxf(780.0, vp.y * 0.74))
+	panel.size = Vector2(w, h).round()
+	panel.position = ((vp - panel.size) * 0.5).round()
+	icon_rect.position = Vector2(36, 30)
+	icon_rect.size = Vector2(76, 76)
+	title.position = Vector2(128, 34)
+	title.size = Vector2(w - 220, 40)
+	subtitle.position = Vector2(130, 76)
+	subtitle.size = Vector2(w - 220, 22)
+	close_btn.position = Vector2(w - 82, 32)
+	close_btn.size = Vector2(44, 44)
+	var pw := clampf(w * 0.34, 300.0, 380.0)
+	tree.position = Vector2(30, 120)
+	tree.size = Vector2(w - pw - 64, h - 150)
+	var plaque: Control = panel.get_node("Plaque")
+	plaque.position = Vector2(w - pw - 30, 124)
+	plaque.size = Vector2(pw, h - 156)
+
+
+func _draw_icon() -> void:
+	if node == null:
+		return
+	var r := Rect2(Vector2.ZERO, icon_rect.size)
+	icon_rect.draw_style_box(UISkin.box("slot5_selected", Vector4(12, 12, 12, 12)), r)
+	preload("res://ui/rune_icon.gd").draw(icon_rect, r.grow(-r.size.x * 8.0 / 56.0), node, game)
+
+
+## source: {"kind": "tower", "tower": t} | {"kind": "item"} — what the shown rune belongs to (for re-validation).
+func show_rune(n, src := {}) -> void:
+	if n == null:
+		return
+	node = n
+	source = src
+	_sig = var_to_str(n)
+	item = RV.build(game, n)
+	picked_item = item
+	tree.set_item(item)
+	title.text = "%s  G%d" % [game.rl.rune_name(n.rune), int(n.grade)]
+	title.add_theme_color_override("font_color", RV.grade_color(int(n.grade)).lerp(S.TRIM_LIGHT, 0.45))
+	subtitle.text = game.rl.rune_identity(n.rune)
+	_show_detail(item)
+	icon_rect.queue_redraw()
+	if not visible:
+		visible = true
+		_layout()
+		modulate.a = 0.0
+		panel.scale = Vector2(0.96, 0.96)
+		panel.pivot_offset = panel.size * 0.5
+		var tw := create_tween().set_parallel(true)
+		tw.tween_property(self, "modulate:a", 1.0, 0.14)
+		tw.tween_property(panel, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
 func hide_inspector() -> void:
 	visible = false
 	node = null
+	item = null
+	picked_item = null
+	source = {}
+	tree.set_item(null)
 
 
-func show_rune(n) -> void:
-	if n == null:
+## Called after every game change (HUD refresh).
+func revalidate() -> void:
+	if not visible or node == null:
 		return
-	node = n
-	var rl = game.rl
-	var c: Dictionary = rl.compile_recipe(n)
-	var by_path := {}
-	for o in rl.walk(c.ops):
-		var path: String = o.uid.rsplit(".", true, 2)[0]
-		if not by_path.has(path):
-			by_path[path] = []
-		by_path[path].append(o)
-	var rej := {}
-	for x in c.rejected:
-		if not rej.has(x.path):
-			rej[x.path] = []
-		rej[x.path].append(x)
-	var n_size: int = rl.node_size(n)
-	title.text = "%s G%d" % [rl.rune_name(n.rune), int(n.grade)]
-	summary.text = "%s\n%d rune%s in this recipe · graft depth %d · value ≈ %d mana" % [rl.rune_identity(n.rune), n_size,
-		"" if n_size == 1 else "s", rl.node_depth(n) - 1, roundi(rl.cost(n).total_mana)]
-	tree.clear()
-	var root := tree.create_item()
-	root.set_text(0, "%s G%d" % [rl.rune_name(n.rune), int(n.grade)])
-	root.set_icon(0, UISkin.tex("rune_%s_g%d" % [n.rune, int(n.grade)]))
-	root.set_icon_max_width(0, 28)
-	root.set_custom_color(0, S.TRIM_LIGHT)
-	_abilities(root, n, "r", 0, by_path, rej, true)
-	visible = true
-	size = get_combined_minimum_size()
-	var vp := get_viewport_rect().size
-	position = Vector2(roundf(vp.x - 470 - size.x - 24), roundf(clampf((vp.y - size.y) * 0.5, 16, vp.y - size.y - 16)))
+	if source.get("kind") == "tower":
+		var t = source.tower
+		if not is_instance_valid(t) or not game.towers.has(t) or t.rune == null:
+			hide_inspector()
+			return
+		if not is_same(t.rune, node) or var_to_str(t.rune) != _sig:
+			show_rune(t.rune, source)          # the tower got another rune (or it changed): follow it
+		return
+	for x in game.all_items():
+		if is_same(x, node):
+			if var_to_str(node) != _sig:
+				show_rune(node, source)        # edited in place (e.g. ungraft on the table)
+			return
+	hide_inspector()                           # consumed by a craft / combine, or replaced by a load
 
 
-func _abilities(parent: TreeItem, n: Dictionary, path: String, depth: int, by_path: Dictionary, rej: Dictionary, all: bool) -> void:
-	var rl = game.rl
-	for a in game.spec.runes[n.rune].abilities:
-		var kids: Array = rl.sorted_kids(n.grafts.get(a.id, []))
-		if not all and kids.is_empty():
-			continue
-		var it := tree.create_item(parent)
-		if int(a.grade) > int(n.grade):
-			it.set_text(0, "◇ %s — unlocks %s" % [rl.ability_name(n.rune, a.id), rl.grade_unlock_text(int(a.grade))])
-			it.set_custom_color(0, S.TEXT_MUTED)
-			continue
-		var cnt := "" if kids.is_empty() else "   [%d donor%s]" % [kids.size(), "" if kids.size() == 1 else "s"]
-		it.set_text(0, "%s  ·  %s%s" % [rl.ability_name(n.rune, a.id), rl.carrier_name(a.carrier), cnt])
-		it.set_custom_color(0, S.TEXT if not kids.is_empty() else S.TEXT_DIM)
-		it.set_tooltip_text(0, rl.ability_desc(n.rune, a.id, int(n.grade)))
-		for i in kids.size():
-			var k: Dictionary = kids[i]
-			var kp := "%s.%s%d" % [path, a.id, i]
-			var di := tree.create_item(it)
-			di.set_icon(0, UISkin.tex("rune_%s_g%d" % [k.rune, int(k.grade)]))
-			di.set_icon_max_width(0, 22)
-			var own := []
-			for o in by_path.get(kp, []):
-				if int(o.depth) == depth + 1:
-					own.append(rl.op_text(o))
-			di.set_text(0, "%s G%d — %s" % [rl.rune_name(k.rune), int(k.grade), "; ".join(own) if not own.is_empty() else "no contribution here"])
-			di.set_custom_color(0, Color("#9FD3FF") if not own.is_empty() else S.TEXT_MUTED)
-			di.set_tooltip_text(0, di.get_text(0))       # long contribution lists: full text on hover
-			for x in rej.get(kp, []):
-				var ri := tree.create_item(di)
-				ri.set_text(0, "✗ %s not carried: %s" % [rl.family_name(x.family) if rl.has_method("family_name") else x.family, x.reason])
-				ri.set_custom_color(0, S.BAD)
-			_abilities(di, k, kp, depth + 1, by_path, rej, false)
-			di.collapsed = depth >= 1
+func _show_detail(it) -> void:
+	detail.text = RV.describe(game, it, true) if it != null else ""
+	detail.scroll_to_line(0)
+
+
+func _gui_input(ev: InputEvent) -> void:
+	if ev is InputEventMouseButton and ev.pressed:
+		if not panel.get_global_rect().has_point(ev.global_position):
+			hide_inspector()
+		accept_event()
+
+
+func _unhandled_input(ev: InputEvent) -> void:
+	if not visible:
+		return
+	if ev is InputEventKey and ev.pressed:
+		if ev.keycode == KEY_ESCAPE:
+			hide_inspector()
+		elif ev.keycode in [KEY_SPACE, KEY_1, KEY_2, KEY_3]:
+			return                             # pause / speed stay available
+		get_viewport().set_input_as_handled()

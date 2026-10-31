@@ -14,6 +14,9 @@ const Slot := preload("res://ui/slot.gd")
 const Bar := preload("res://ui/bar.gd")
 const CraftTable := preload("res://ui/craft_table.gd")
 const RuneInspector := preload("res://ui/rune_inspector.gd")
+const RuneTree := preload("res://ui/rune_tree.gd")
+const RV := preload("res://ui/rune_view.gd")
+const T := preload("res://ui/i18n.gd")
 
 const PANEL_X := 1464
 const PANEL_W := 440
@@ -41,11 +44,19 @@ var tabs := {}
 var pages := {}
 var current_tab := "craft"
 var table
-var detail_box: VBoxContainer
-var desc: RichTextLabel
-var desc_title: Label
+var struct_tree
+var struct_cap: RichTextLabel
+var struct_name: Label
+var struct_act: Button
+var details_btn: Button
+var struct_src := "base"                # which rune the structure view shows: base | output | inv
+var struct_pick = null                  # picked tree item
+var struct_node = null
+var _struct_sig := ""
 var inv_grid: GridContainer
 var inv_title: Label
+var inv_count: Label
+var inv_bar
 var inv_slots: Array = []
 var sel_inv := -1
 var build_btn: Button
@@ -62,6 +73,7 @@ var sock_slot
 var tower_name: Label
 var tower_info: Label
 var tower_dps: Label
+var tower_mana: Label
 var sell_btn: Button
 var take_rune_btn: Button
 # misc
@@ -96,9 +108,9 @@ func setup(g) -> void:
 	_tower_card()
 	_toast()
 	_banner()
-	_tooltip()
-	inspector = RuneInspector.new(game)
+	inspector = RuneInspector.new(game, self)
 	root.add_child(inspector)
+	_tooltip()
 	fx_layer = Control.new()
 	fx_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
 	fx_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -258,11 +270,11 @@ func _top_center() -> void:
 	var rh := HBoxContainer.new()
 	rh.add_theme_constant_override("separation", 6)
 	rh.add_child(_icon("hourglass", 20))
-	next_lbl = S.label("Remaining 20s", 14, S.TEXT, "bold")
+	next_lbl = S.label(T.t("remaining", {"s": 20}), 14, S.TEXT, "bold")
 	rh.add_child(next_lbl)
 	rc.add_child(rh)
 	next_row.add_child(rc)
-	start_btn = _btn("Start now ▸", "btn_rune", Vector2(124, 38), "", func(): game.start_wave())
+	start_btn = _btn(T.t("start_now"), "btn_rune", Vector2(124, 38), "", func(): game.start_wave())
 	start_btn.add_theme_font_size_override("font_size", 14)
 	next_row.add_child(start_btn)
 
@@ -284,7 +296,7 @@ func _right_panel() -> void:
 	holder.add_child(panel)
 	var group := ButtonGroup.new()
 	var i := 0
-	for k in [["craft", "Craft", "craft"], ["shop", "Shop", "shop"], ["menu", "Menu", "menu"]]:
+	for k in [["craft", T.t("tab_craft"), "craft"], ["shop", T.t("tab_shop"), "shop"], ["menu", T.t("tab_menu"), "menu"]]:
 		var b := Button.new()
 		b.toggle_mode = true
 		b.button_group = group
@@ -335,44 +347,76 @@ func _page(content: Rect2) -> VBoxContainer:
 
 
 func _craft_page(content: Rect2) -> Control:
+	# Crafting area (top) → rune structure (middle, takes the free height) → inventory (bottom, always fully visible)
 	var v := _page(content)
-	v.add_child(_title("RUNE TABLE"))
+	v.add_theme_constant_override("separation", 6)
+	v.add_child(_title(T.t("rune_table")))
 	table = CraftTable.new(game, self)
 	v.add_child(table)
-	detail_box = VBoxContainer.new()
-	detail_box.add_theme_constant_override("separation", 4)
-	v.add_child(detail_box)
-	var df := PanelContainer.new()
-	df.add_theme_stylebox_override("panel", UISkin.box("chip", Vector4(-1, -1, -1, -1), Vector4(12, 8, 12, 8)))
-	df.custom_minimum_size = Vector2(0, 150)
-	var dv := VBoxContainer.new()
-	desc_title = S.label("", 12, Color("#9C98A6"), "bold")
-	dv.add_child(desc_title)
-	desc = RichTextLabel.new()
-	desc.bbcode_enabled = true
-	desc.scroll_active = true
-	desc.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	desc.add_theme_font_override("normal_font", S.font("body"))
-	desc.add_theme_font_override("bold_font", S.font("bold"))
-	desc.add_theme_font_size_override("normal_font_size", 13)
-	desc.add_theme_font_size_override("bold_font_size", 13)
-	desc.add_theme_color_override("default_color", S.TEXT_DIM)
-	dv.add_child(desc)
-	df.add_child(dv)
-	v.add_child(df)
-	inv_title = _title("INVENTORY", 15)
-	v.add_child(inv_title)
+	var sh := HBoxContainer.new()
+	var st := _title(T.t("rune_structure"), 15)
+	st.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sh.add_child(st)
+	struct_name = S.label("", 13, S.TEXT_DIM, "bold")
+	struct_name.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	sh.add_child(struct_name)
+	details_btn = _btn(T.t("details"), "btn", Vector2(0, 30), "expand", func(): _open_struct_details())
+	details_btn.add_theme_font_size_override("font_size", 12)
+	details_btn.add_theme_constant_override("icon_max_width", 16)
+	sh.add_child(details_btn)
+	v.add_child(sh)
+	struct_tree = RuneTree.new(game)
+	struct_tree.compact = true
+	struct_tree.custom_minimum_size = Vector2(0, 150)
+	struct_tree.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	struct_tree.picked.connect(func(it): struct_pick = it; _struct_caption(it))
+	struct_tree.hovered.connect(func(it): _struct_caption(it if it != null else struct_pick))
+	v.add_child(struct_tree)
+	var cap := PanelContainer.new()
+	cap.add_theme_stylebox_override("panel", UISkin.box("plaque", Vector4(22, 22, 22, 22), Vector4(16, 12, 16, 12)))
+	cap.custom_minimum_size = Vector2(0, 132)
+	var ch := HBoxContainer.new()
+	ch.add_theme_constant_override("separation", 8)
+	struct_cap = RichTextLabel.new()
+	struct_cap.bbcode_enabled = true
+	struct_cap.scroll_active = true
+	struct_cap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	struct_cap.add_theme_font_override("normal_font", S.font("body"))
+	struct_cap.add_theme_font_override("bold_font", S.font("bold"))
+	struct_cap.add_theme_font_size_override("normal_font_size", 13)
+	struct_cap.add_theme_font_size_override("bold_font_size", 14)
+	struct_cap.add_theme_color_override("default_color", S.TEXT_DIM)
+	ch.add_child(struct_cap)
+	struct_act = _btn("", "btn", Vector2(0, 34), "", func(): _struct_action())
+	struct_act.add_theme_font_size_override("font_size", 12)
+	struct_act.size_flags_vertical = Control.SIZE_SHRINK_END
+	struct_act.visible = false
+	ch.add_child(struct_act)
+	cap.add_child(ch)
+	v.add_child(cap)
+	var ih := HBoxContainer.new()
+	ih.add_theme_constant_override("separation", 10)
+	inv_title = _title(T.t("inventory"), 15)
+	ih.add_child(inv_title)
+	inv_count = S.label("", 13, S.TEXT_DIM, "bold")
+	inv_count.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	ih.add_child(inv_count)
+	inv_bar = Bar.new("wave", Vector2(120, 14))
+	inv_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	inv_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	ih.add_child(inv_bar)
+	v.add_child(ih)
 	inv_grid = GridContainer.new()
 	inv_grid.columns = 6
 	inv_grid.add_theme_constant_override("h_separation", 8)
 	inv_grid.add_theme_constant_override("v_separation", 8)
 	for i in game.INV_SIZE:
-		var sl = Slot.new(game, "inv", i, Vector2(58, 58))
+		var sl = Slot.new(game, "inv", i, Vector2(56, 56))
 		sl.can_drop = func(d): return d.src in ["inv", "output", "socket", "pending", "base"]
 		sl.on_drop = func(d): _drop_on_inv(i, d)
 		sl.on_click = func(dbl): _click_inv(i, dbl)
 		sl.drop_hint = func(d): return _inv_hint(i, d)
-		sl.tooltip_fn = func(): return tip_for(game.inventory[i]) + ("\n[color=#8C877D]Drop the same rune on it to combine · double-click: tower / table[/color]" if game.inventory[i] != null else "")
+		sl.tooltip_fn = func(): return tip_for(game.inventory[i]) + ("\n[color=#8C877D]%s[/color]" % T.t("tip_inv_actions") if game.inventory[i] != null else "")
 		inv_slots.append(sl)
 		inv_grid.add_child(sl)
 	v.add_child(inv_grid)
@@ -381,16 +425,16 @@ func _craft_page(content: Rect2) -> Control:
 
 func _shop_page(content: Rect2) -> Control:
 	var v := _page(content)
-	v.add_child(_title("BUILD"))
-	build_btn = _btn("Build tower", "btn_rune", Vector2(0, 56), "tower", func(): game.toggle_build())
+	v.add_child(_title(T.t("build")))
+	build_btn = _btn(T.t("build_tower"), "btn_rune", Vector2(0, 56), "tower", func(): game.toggle_build())
 	build_btn.toggle_mode = true
 	build_btn.add_theme_font_size_override("font_size", 17)
 	v.add_child(build_btn)
-	var hint := S.label("Towers cost mana stones (dropped by enemies). Hotkey B · Shift keeps building.", 12, S.TEXT_MUTED)
+	var hint := S.label(T.t("build_hint"), 13, S.TEXT_MUTED)
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(hint)
 	var gap := Control.new(); gap.custom_minimum_size = Vector2(0, 10); v.add_child(gap)
-	v.add_child(_title("RUNES"))
+	v.add_child(_title(T.t("runes")))
 	var grid := GridContainer.new()
 	grid.columns = 4
 	grid.add_theme_constant_override("h_separation", 12)
@@ -406,7 +450,7 @@ func _shop_page(content: Rect2) -> Control:
 					game.buy_rune(rid)
 				_pop(sl)
 				burst_at(sl.get_global_rect().get_center(), S.MANA)
-		sl.tooltip_fn = func(): return "[b][color=#ECE6D6]%s[/color][/b] — %d mana\n%s\n[color=#8C877D]Each purchase raises this rune's price; the price cools down after every cleared wave.\nClick: buy · Shift+click: buy 2[/color]" % [game.rl.rune_name(rid), game.rune_cost(rid), game.rl.rune_identity(rid)]
+		sl.tooltip_fn = func(): return "[b][color=#ECE6D6]%s[/color][/b]  [color=#9FD3FF]%d mana[/color]\n[color=#8C877D]%s[/color]\n[color=#8C877D]%s[/color]" % [game.rl.rune_name(rid), game.rune_cost(rid), game.rl.rune_identity(rid), T.t("tip_shop")]
 		cell.add_child(sl)
 		var ch := HBoxContainer.new()
 		ch.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -425,9 +469,9 @@ func _shop_page(content: Rect2) -> Control:
 
 func _menu_page(content: Rect2) -> Control:
 	var v := _page(content)
-	v.add_child(_title("PAUSED", 22))
-	v.add_child(_btn("Resume", "btn_rune", Vector2(0, 52), "play", func(): select_tab("craft")))
-	v.add_child(_btn("Settings", "btn", Vector2(0, 52), "gear", func(): settings_box.visible = not settings_box.visible))
+	v.add_child(_title(T.t("paused"), 22))
+	v.add_child(_btn(T.t("resume"), "btn_rune", Vector2(0, 52), "play", func(): select_tab("craft")))
+	v.add_child(_btn(T.t("settings"), "btn", Vector2(0, 52), "gear", func(): settings_box.visible = not settings_box.visible))
 	settings_box = VBoxContainer.new()
 	settings_box.add_theme_constant_override("separation", 6)
 	settings_box.visible = false
@@ -435,11 +479,11 @@ func _menu_page(content: Rect2) -> Control:
 	sp.add_theme_stylebox_override("panel", UISkin.box("chip", Vector4(-1, -1, -1, -1), Vector4(14, 10, 14, 10)))
 	sp.add_child(settings_box)
 	v.add_child(sp)
-	settings_box.add_child(_toggle("Damage numbers", "numbers"))
-	settings_box.add_child(_toggle("Fullscreen", "fullscreen"))
-	settings_box.add_child(_toggle("Edge scrolling", "edge_pan"))
+	settings_box.add_child(_toggle(T.t("set_numbers"), "numbers"))
+	settings_box.add_child(_toggle(T.t("set_fullscreen"), "fullscreen"))
+	settings_box.add_child(_toggle(T.t("set_edge_pan"), "edge_pan"))
 	var sh := HBoxContainer.new()
-	sh.add_child(S.label("Camera speed", 14, S.TEXT, "medium"))
+	sh.add_child(S.label(T.t("set_cam_speed"), 14, S.TEXT, "medium"))
 	var sl := HSlider.new()
 	sl.min_value = 0.5; sl.max_value = 2.0; sl.step = 0.05
 	sl.value = float(game.settings.get("cam_speed", 1.0))
@@ -449,9 +493,9 @@ func _menu_page(content: Rect2) -> Control:
 	sh.add_child(sl)
 	settings_box.add_child(sh)
 	var ah := HBoxContainer.new()
-	ah.add_child(S.label("Camera angle (testing)", 14, S.TEXT, "medium"))
+	ah.add_child(S.label(T.t("set_cam_angle"), 14, S.TEXT, "medium"))
 	var ob := OptionButton.new()
-	for k in [["45", "45°"], ["30", "30°"], ["dynamic", "Zoom-based"]]:
+	for k in [["45", "45°"], ["30", "30°"], ["dynamic", T.t("cam_zoom_based")]]:
 		ob.add_item(k[1])
 		ob.set_item_metadata(ob.item_count - 1, k[0])
 		if str(game.settings.get("cam_angle", "45")) == k[0]:
@@ -460,13 +504,24 @@ func _menu_page(content: Rect2) -> Control:
 	ob.item_selected.connect(func(i): game.apply_setting("cam_angle", ob.get_item_metadata(i)))
 	ah.add_child(ob)
 	settings_box.add_child(ah)
-	var lang := S.label("Language: English (more coming)", 13, S.TEXT_MUTED)
-	settings_box.add_child(lang)
-	save_btn = _btn("Save game", "btn", Vector2(0, 52), "save", func(): game.save_game())
+	var lh := HBoxContainer.new()
+	lh.add_child(S.label(T.t("set_language"), 14, S.TEXT, "medium"))
+	var lo := OptionButton.new()
+	for k in [["en", "English"], ["tr", "Türkçe"]]:
+		lo.add_item(k[1])
+		lo.set_item_metadata(lo.item_count - 1, k[0])
+		if str(game.settings.get("lang", "en")) == k[0]:
+			lo.select(lo.item_count - 1)
+	lo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lo.tooltip_text = T.t("set_language_note")
+	lo.item_selected.connect(func(i): game.apply_setting("lang", lo.get_item_metadata(i)))
+	lh.add_child(lo)
+	settings_box.add_child(lh)
+	save_btn = _btn(T.t("save_game"), "btn", Vector2(0, 52), "save", func(): game.save_game())
 	v.add_child(save_btn)
-	v.add_child(_btn("Load game", "btn", Vector2(0, 52), "load", func(): game.load_game()))
-	v.add_child(_btn("Quit", "btn_bad", Vector2(0, 52), "exit", func(): get_tree().quit()))
-	var keys := S.label("Camera: WASD / arrows · wheel zoom · middle-drag · Q/E rotate\nSpace pause · 1/2/3 speed · B build · N next wave", 12, S.TEXT_MUTED)
+	v.add_child(_btn(T.t("load_game"), "btn", Vector2(0, 52), "load", func(): game.load_game()))
+	v.add_child(_btn(T.t("quit"), "btn_bad", Vector2(0, 52), "exit", func(): get_tree().quit()))
+	var keys := S.label(T.t("controls_help"), 13, S.TEXT_MUTED)
 	keys.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(keys)
 	return v
@@ -513,22 +568,30 @@ func select_tab(key: String, animate := true) -> void:
 
 
 func _tower_card() -> void:
+	# bottom-left card: socket on its grade light · name (ellipsis when long) · DPS / mana row · 3 equal buttons.
+	# Everything sits in containers inside the 9-slice, so long names or big numbers never leave the card.
 	tower_card = Control.new()
 	tower_card.anchor_top = 1.0; tower_card.anchor_bottom = 1.0
-	tower_card.offset_left = 16; tower_card.offset_right = 436; tower_card.offset_top = -168; tower_card.offset_bottom = -16
+	tower_card.offset_left = 16; tower_card.offset_right = 456; tower_card.offset_top = -160; tower_card.offset_bottom = -16
 	root.add_child(tower_card)
-	var bg := Panel.new()                         # Penpot card art as a 9-slice (wider card: 3 buttons + DPS / mana)
+	var bg := Panel.new()
 	bg.add_theme_stylebox_override("panel", UISkin.box("card_tower", Vector4(34, 34, 34, 34)))
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	bg.mouse_filter = Control.MOUSE_FILTER_STOP
 	tower_card.add_child(bg)
+	var m := MarginContainer.new()
+	m.set_anchors_preset(Control.PRESET_FULL_RECT)
+	for k in ["margin_left", "margin_right"]:
+		m.add_theme_constant_override(k, 24)
+	m.add_theme_constant_override("margin_top", 22)
+	m.add_theme_constant_override("margin_bottom", 22)
+	m.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tower_card.add_child(m)
 	var h := HBoxContainer.new()
-	h.position = Vector2(22, 22)
-	h.size = Vector2(376, 108)
-	h.add_theme_constant_override("separation", 12)
-	tower_card.add_child(h)
-	sock_slot = Slot.new(game, "socket", -1, Vector2(76, 76))
-	sock_slot.hint = "Rune"
+	h.add_theme_constant_override("separation", 14)
+	m.add_child(h)
+	sock_slot = Slot.new(game, "socket", -1, Vector2(80, 80))
+	sock_slot.hint = "+"
 	sock_slot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	sock_slot.can_drop = func(d): return d.src in ["inv", "output"] and game.selected_tower != null
 	sock_slot.on_drop = func(d):
@@ -537,31 +600,40 @@ func _tower_card() -> void:
 			return
 		game.socket(game.selected_tower, d.idx)
 		_pop(sock_slot)
-	sock_slot.drop_hint = func(_d): return "Socket" if game.selected_tower and game.selected_tower.rune == null else "Swap"
+	sock_slot.drop_hint = func(_d): return T.t("drop_socket") if game.selected_tower and game.selected_tower.rune == null else T.t("drop_swap")
 	sock_slot.tooltip_fn = func(): return tip_for(game.selected_tower.rune if game.selected_tower else null)
 	h.add_child(sock_slot)
 	var v := VBoxContainer.new()
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	v.add_theme_constant_override("separation", 2)
-	var nh := HBoxContainer.new()
-	tower_name = S.label("", 18, S.TRIM_LIGHT, "head")
-	tower_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	tower_dps = S.label("", 13, S.GOLD, "bold")
-	nh.add_child(tower_name); nh.add_child(tower_dps)
-	v.add_child(nh)
-	tower_info = S.label("", 12, S.TEXT_MUTED)
+	v.add_theme_constant_override("separation", 4)
+	tower_name = S.label("", 20, S.TRIM_LIGHT, "head")
+	tower_name.clip_text = true
+	tower_name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	tower_name.custom_minimum_size = Vector2(120, 0)
+	v.add_child(tower_name)
+	var sh := HBoxContainer.new()
+	sh.add_theme_constant_override("separation", 14)
+	tower_dps = S.label("", 14, S.GOLD, "bold")
+	tower_mana = S.label("", 14, S.MANA.lightened(0.25), "bold")
+	sh.add_child(tower_dps); sh.add_child(tower_mana)
+	v.add_child(sh)
+	tower_info = S.label("", 13, S.TEXT_MUTED)
 	tower_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	tower_info.custom_minimum_size = Vector2(220, 34)
+	tower_info.custom_minimum_size = Vector2(200, 0)
 	v.add_child(tower_info)
+	var sp := Control.new()
+	sp.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	v.add_child(sp)
 	var bh := HBoxContainer.new()
 	bh.add_theme_constant_override("separation", 6)
-	take_rune_btn = _btn("Remove", "btn", Vector2(84, 36), "", func(): game.unsocket(game.selected_tower))
-	take_rune_btn.add_theme_font_size_override("font_size", 13)
-	inspect_btn = _btn("Inspect", "btn_rune", Vector2(84, 36), "", func(): inspect(game.selected_tower.rune if game.selected_tower else null))
-	inspect_btn.add_theme_font_size_override("font_size", 13)
-	sell_btn = _btn("Sell", "btn_bad", Vector2(96, 36), "", func(): game.sell_tower(game.selected_tower))
-	sell_btn.add_theme_font_size_override("font_size", 13)
-	bh.add_child(inspect_btn); bh.add_child(take_rune_btn); bh.add_child(sell_btn)
+	inspect_btn = _btn(T.t("inspect"), "btn_rune", Vector2(0, 36), "", func(): inspect(game.selected_tower.rune if game.selected_tower else null, {"kind": "tower", "tower": game.selected_tower}))
+	take_rune_btn = _btn(T.t("remove"), "btn", Vector2(0, 36), "", func(): game.unsocket(game.selected_tower))
+	sell_btn = _btn(T.t("sell"), "btn_bad", Vector2(0, 36), "", func(): game.sell_tower(game.selected_tower))
+	for b in [inspect_btn, take_rune_btn, sell_btn]:
+		b.add_theme_font_size_override("font_size", 13)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.clip_text = true
+		bh.add_child(b)
 	v.add_child(bh)
 	h.add_child(v)
 
@@ -601,18 +673,18 @@ func show_banner(t: String, c := S.TRIM_LIGHT) -> void:
 
 func _tooltip() -> void:
 	tip = PanelContainer.new()
-	tip.add_theme_stylebox_override("panel", UISkin.box("chip_rune", Vector4(-1, -1, -1, -1), Vector4(14, 12, 14, 12)))
-	tip.custom_minimum_size = Vector2(380, 0)
+	tip.add_theme_stylebox_override("panel", UISkin.box("plaque", Vector4(22, 22, 22, 22), Vector4(18, 14, 18, 14)))
+	tip.custom_minimum_size = Vector2(348, 0)
 	tip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tip.visible = false
 	tip_text = RichTextLabel.new()
 	tip_text.bbcode_enabled = true
 	tip_text.fit_content = true
-	tip_text.custom_minimum_size = Vector2(352, 0)
+	tip_text.custom_minimum_size = Vector2(312, 0)
 	tip_text.add_theme_font_override("normal_font", S.font("body"))
 	tip_text.add_theme_font_override("bold_font", S.font("bold"))
-	tip_text.add_theme_font_size_override("normal_font_size", 13)
-	tip_text.add_theme_font_size_override("bold_font_size", 14)
+	tip_text.add_theme_font_size_override("normal_font_size", 14)
+	tip_text.add_theme_font_size_override("bold_font_size", 16)
 	tip_text.add_theme_color_override("default_color", S.TEXT_DIM)
 	tip_text.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tip.add_child(tip_text)
@@ -664,14 +736,14 @@ func _inv_hint(i: int, d: Dictionary) -> String:
 		"inv":
 			var a = game.inventory[d.idx]
 			if here != null and a != null and a.rune == here.rune and int(a.grade) == int(here.grade):
-				return "Combine → G%d  (%d mana)" % [int(a.grade) + 1, game.combine_fee(int(a.grade))] if int(a.grade) < 5 else "G5 is the maximum"
-			return "Swap" if here != null else "Move"
+				return T.t("drop_combine", {"g": int(a.grade) + 1, "n": game.combine_fee(int(a.grade))}) if int(a.grade) < 5 else T.t("drop_max_grade")
+			return T.t("drop_swap") if here != null else T.t("drop_move")
 		"output":
-			return "Take into inventory"
+			return T.t("drop_take")
 		"socket":
-			return "Take off the tower"
+			return T.t("drop_unsocket")
 		"base":
-			return "Clear the table"
+			return T.t("drop_clear_table")
 	return ""
 
 
@@ -713,55 +785,107 @@ func _click_inv(i: int, dbl: bool) -> void:
 			sel_inv = -1
 			return
 	sel_inv = i
+	struct_src = "inv"
+	_struct_sig = ""
 	refresh()
 
 
-func _detail_strip() -> void:
-	for ch in detail_box.get_children():
-		ch.queue_free()
-	var b = game.craft.base
-	var ab: String = table.selected_ability
-	if b == null:
-		var l := S.label("Drop a rune in the centre of the circle; its open abilities become graft slots.", 12, S.TEXT_MUTED)
-		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		detail_box.add_child(l)
+# ------------------------------------------------------------------ rune structure (Craft tab middle)
+
+## Which rune the structure view shows. "base" also shows the pending donors (as pending nodes: their effect is
+## only described after crafting — no preview). Optional `ability` pre-selects that ability node.
+func show_structure_of(which: String, ability := "") -> void:
+	struct_src = which
+	_struct_sig = ""
+	_struct_update(ability)
+
+
+func _struct_rune():
+	match struct_src:
+		"output":
+			if game.craft.output != null:
+				return game.craft.output
+		"inv":
+			if sel_inv >= 0 and game.inventory[sel_inv] != null:
+				return game.inventory[sel_inv]
+	if game.craft.output != null:
+		return game.craft.output
+	if game.craft.base != null:
+		return game.craft.base
+	if sel_inv >= 0 and game.inventory[sel_inv] != null:
+		return game.inventory[sel_inv]
+	return null
+
+
+func _struct_update(ability := "") -> void:
+	var n = _struct_rune()
+	var is_base: bool = n != null and is_same(n, game.craft.base)
+	var sig := var_to_str([n, game.craft.pending if is_base else null, struct_src])
+	if sig == _struct_sig and ability == "":
 		return
-	if ab == "":
-		var l := S.label("Click a slot to list that ability's grafts here.", 12, S.TEXT_MUTED)
-		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		detail_box.add_child(l)
+	_struct_sig = sig
+	struct_node = n
+	details_btn.disabled = n == null
+	if n == null:
+		struct_tree.set_item(null)
+		struct_name.text = ""
+		struct_pick = null
+		struct_cap.text = "[color=#8C877D]%s[/color]" % T.t("structure_empty")
+		struct_act.visible = false
 		return
-	var a: Dictionary = _ab(b.rune, ab)
-	var row := PanelContainer.new()
-	row.add_theme_stylebox_override("panel", UISkin.box("chip", Vector4(-1, -1, -1, -1), Vector4(10, 6, 10, 6)))
-	var h := HBoxContainer.new()
-	h.add_theme_constant_override("separation", 6)
-	var lv := VBoxContainer.new()
-	lv.custom_minimum_size = Vector2(120, 0)
-	lv.add_theme_constant_override("separation", -2)
-	lv.add_child(S.label(game.rl.ability_name(b.rune, ab), 13, S.TEXT, "bold"))
-	lv.add_child(S.label(game.rl.carrier_name(a.carrier), 11, S.TEXT_MUTED))
-	h.add_child(lv)
-	var existing: Array = b.grafts.get(ab, [])
-	for k in existing.size():
-		var s = Slot.new(game, "graft", k, Vector2(40, 40))
-		s.set_node(existing[k])
-		var kk := k
-		s.on_click = func(_dbl): game.craft_ungraft(ab, kk)
-		s.tooltip_fn = func(): return tip_for(existing[kk]) + "\n[color=#F06A5A]Click: remove — the rune returns, the fee is lost[/color]"
-		h.add_child(s)
-	var pend: Array = game.craft.pending.get(ab, [])
-	for k in pend.size():
-		var s = Slot.new(game, "pending", k, Vector2(40, 40))
-		s.set_node(pend[k], true)
-		var kk := k
-		s.on_click = func(_dbl): game.craft_remove_pending(ab, kk)
-		s.tooltip_fn = func(): return tip_for(pend[kk]) + "\n[color=#9FD3FF]Pending — applied by Craft. Click: take back[/color]"
-		h.add_child(s)
-	if existing.is_empty() and pend.is_empty():
-		h.add_child(S.label("empty", 12, S.TEXT_MUTED))
-	row.add_child(h)
-	detail_box.add_child(row)
+	var it := RV.build(game, n, game.craft.pending if is_base else {})
+	var keep = struct_pick
+	struct_tree.set_item(it)
+	struct_pick = it
+	struct_name.text = "%s G%d" % [game.rl.rune_name(n.rune), int(n.grade)]
+	struct_name.add_theme_color_override("font_color", RV.grade_color(int(n.grade)).lerp(S.TRIM_LIGHT, 0.45))
+	# keep the picked ability across rebuilds (same ability id), or take the requested one
+	var want := ability
+	if want == "" and keep != null and keep.kind == "ability" and keep.node.rune == n.rune:
+		want = keep.ability
+	if want != "":
+		for ab in it.kids:
+			if ab.ability == want:
+				struct_pick = ab
+				struct_tree.selected = ab
+	_struct_caption(struct_pick)
+
+
+func _struct_caption(it) -> void:
+	struct_cap.text = RV.describe(game, it) if it != null else ""
+	struct_cap.scroll_to_line(0)
+	# actions on the table rune: take a pending donor back, or ungraft an existing donor (fee lost)
+	struct_act.visible = false
+	if it == null or it.kind != "rune" or it.depth != 1 or struct_node == null or not is_same(struct_node, game.craft.base):
+		return
+	struct_act.set_meta("item", it)
+	struct_act.text = T.t("take_back") if it.pending else T.t("ungraft")
+	struct_act.visible = true
+
+
+func _struct_action() -> void:
+	var it = struct_act.get_meta("item", null)
+	if it == null or game.craft.base == null:
+		return
+	# find the ability and the index of this donor on the table rune
+	for ab in game.spec.runes[game.craft.base.rune].abilities:
+		if it.pending:
+			var pend: Array = game.craft.pending.get(ab.id, [])
+			for k in pend.size():
+				if is_same(pend[k], it.node):
+					game.craft_remove_pending(ab.id, k)
+					return
+		else:
+			var ex: Array = game.craft.base.grafts.get(ab.id, [])
+			for k in ex.size():
+				if is_same(ex[k], it.node):
+					game.craft_ungraft(ab.id, k)
+					return
+
+
+func _open_struct_details() -> void:
+	if struct_node != null:
+		inspect(struct_node)
 
 
 func _ab(rid: String, ab: String) -> Dictionary:
@@ -773,50 +897,71 @@ func _ab(rid: String, ab: String) -> Dictionary:
 
 # ------------------------------------------------------------------ tooltip
 
-func inspect(node) -> void:
+func inspect(node, src := {}) -> void:
 	if node == null:
 		return
 	hide_tip(tip_owner)
-	inspector.show_rune(node)
+	inspector.show_rune(node, src)
 
 
+## Short loot-style tooltip: name in its grade colour, one identity line, the abilities that carry grafts (max 4),
+## then a hint. Everything longer lives in the inspector (right-click), so the tooltip never grows off-screen.
 func tip_for(node) -> String:
 	if node == null:
 		return ""
-	var txt: String = game.describe(node)
-	var lines := txt.split("\n")
-	var out := "[b][color=#ECE6D6]%s[/color][/b]\n" % lines[0]
-	for i in range(1, lines.size()):
-		var ln := lines[i]
-		var t := ln.strip_edges()
-		if t.begins_with("✗"):
-			out += "[color=#B07A6A]%s[/color]\n" % ln
-		elif t.begins_with("🔒"):
-			out += "[color=#7E7A86]%s[/color]\n" % ln.replace("🔒", "◇")
-		elif t.begins_with("↳"):
-			out += "[color=#9FD3FF]%s[/color]\n" % ln
-		else:
-			out += ln + "\n"
-	var n: int = game.rl.node_size(node)
-	out += "[color=#8C877D]Value ≈ %d mana%s · right-click: inspect[/color]" % [roundi(game.rl.cost(node).total_mana), ("  ·  %d runes, depth %d" % [n, game.rl.node_depth(node) - 1]) if n > 1 else ""]
+	var rl = game.rl
+	var g := int(node.grade)
+	var out := "[b][color=#%s]%s G%d[/color][/b]\n" % [RV.grade_color(g).lerp(S.TRIM_LIGHT, 0.4).to_html(false), rl.rune_name(node.rune), g]
+	out += "[color=#8C877D]%s[/color]" % rl.rune_identity(node.rune)
+	var lines := []
+	var locked := []
+	for a in game.spec.runes[node.rune].abilities:
+		if int(a.grade) > g:
+			locked.append(T.t("grade_short", {"g": int(a.grade)}))
+			continue
+		var kids: Array = node.grafts.get(a.id, [])
+		if kids.is_empty():
+			continue
+		var names := []
+		for k in rl.sorted_kids(kids):
+			names.append("%s G%d" % [rl.rune_name(k.rune), int(k.grade)])
+		lines.append("[color=#7FE3F0]◆[/color] %s [color=#8C877D]←[/color] [color=#9FD3FF]%s[/color]" % [rl.ability_name(node.rune, a.id), ", ".join(names)])
+	if not lines.is_empty():
+		out += "\n" + "\n".join(lines.slice(0, 4))
+		if lines.size() > 4:
+			out += "\n[color=#8C877D]%s[/color]" % T.t("tip_more", {"n": lines.size() - 4})
+	if not locked.is_empty():
+		out += "\n[color=#6E6A78]◇ %s[/color]" % T.t("tip_locked", {"list": ", ".join(locked)})
+	out += "\n[color=#7FE3F0]%s[/color]" % T.t("tip_inspect")
 	return out
 
 
 func show_tip(text: String, owner: Control) -> void:
-	if text == "":
+	if text == "" or inspector.visible:
 		return
 	tip_owner = owner
 	tip_text.text = text
 	tip.visible = true
 	tip.modulate.a = 0.0
 	create_tween().tween_property(tip, "modulate:a", 1.0, 0.12)
-	tip.reset_size()
-	var r := owner.get_global_rect()
 	var vp := root.get_viewport_rect().size
+	# never taller than the screen: the text scrolls inside (it is short by construction anyway)
+	tip_text.custom_minimum_size = Vector2(312, 0)
+	tip.reset_size()
+	var max_h := vp.y * 0.6
+	if tip.size.y > max_h:
+		tip_text.fit_content = false
+		tip_text.custom_minimum_size = Vector2(312, max_h - 28)
+		tip.size = Vector2(tip.size.x, max_h)
+	else:
+		tip_text.fit_content = true
+	var r := owner.get_global_rect()
 	var p := Vector2(r.position.x - tip.size.x - 12, r.position.y)
 	if p.x < 8:
 		p.x = r.end.x + 12
-	p.y = clampf(p.y, 8, vp.y - tip.size.y - 8)
+	if p.x + tip.size.x > vp.x - 8:
+		p.x = vp.x - 8 - tip.size.x
+	p.y = clampf(p.y, 8, maxf(8.0, vp.y - tip.size.y - 8))
 	tip.position = p.round()
 
 
@@ -852,23 +997,18 @@ func refresh() -> void:
 	if sig != _table_sig:
 		_table_sig = sig
 		table.rebuild()
-		_detail_strip()
-	if game.craft.output != null:
-		desc_title.text = "OUTPUT RUNE"
-		desc.text = tip_for(game.craft.output)
-	elif game.craft.base != null:
-		desc_title.text = "BASE RUNE (current)"
-		desc.text = tip_for(game.craft.base)
-	else:
-		desc_title.text = "DESCRIPTION"
-		desc.text = "[color=#8C877D]After crafting, the output rune's description appears here. There is no preview before crafting.[/color]"
+	_struct_update()
+	inspector.revalidate()
 	var used := 0
 	for i in game.INV_SIZE:
 		inv_slots[i].set_node(game.inventory[i], i == sel_inv)
 		if game.inventory[i] != null:
 			used += 1
-	inv_title.text = "INVENTORY  %d / %d" % [used, game.INV_SIZE]
-	shop_count.text = "Inventory  %d / %d" % [used, game.INV_SIZE]
+	inv_count.text = "%d / %d" % [used, game.INV_SIZE]
+	inv_bar.value = float(used) / float(game.INV_SIZE)
+	inv_bar.queue_redraw()
+	inv_count.add_theme_color_override("font_color", S.BAD if used >= game.INV_SIZE else (S.GOLD if used >= game.INV_SIZE - 2 else S.TEXT_DIM))
+	shop_count.text = T.t("inventory_count", {"n": used, "max": game.INV_SIZE})
 	for rid in shop_prices:
 		var c: int = game.rune_cost(rid)
 		var base := int(game.spec.economy.rune_buy_g1_mana[game.spec.runes[rid].buy])
@@ -880,13 +1020,16 @@ func refresh() -> void:
 		sock_slot.set_node(t.rune)
 		if t.rune != null:
 			tower_name.text = "%s G%d" % [game.rl.rune_name(t.rune.rune), int(t.rune.grade)]
-			tower_info.text = game.rl.rune_identity(t.rune.rune)
+			tower_name.add_theme_color_override("font_color", RV.grade_color(int(t.rune.grade)).lerp(S.TRIM_LIGHT, 0.45))
+			tower_info.text = ""
 		else:
-			tower_name.text = "Empty tower"
-			tower_info.text = "Drag a rune from the inventory onto the tower or this socket."
+			tower_name.text = T.t("empty_tower")
+			tower_name.add_theme_color_override("font_color", S.TRIM_LIGHT)
+			tower_info.text = T.t("empty_tower_hint")
 		take_rune_btn.disabled = t.rune == null
+		tower_info.visible = tower_info.text != ""
 		inspect_btn.disabled = t.rune == null
-		sell_btn.text = "Sell  +%d ◆" % game.economy.tower_refund(t)
+		sell_btn.text = T.t("sell_refund", {"n": game.economy.tower_refund(t)})
 	build_btn.button_pressed = game.build_mode
 	_update_live(0.0)
 
@@ -923,8 +1066,8 @@ func _update_live(dt: float) -> void:
 	bars.stone.text = "%d ◆" % roundi(shown_stones)
 	for k in bars:
 		bars[k].queue_redraw()
-	build_btn.text = "Build tower    ◆ %d    [B]" % game.tower_cost()
-	wave_lbl.text = ("W%d" % maxi(game.wave, 1)) if game.wave_state != "lost" else "LOST"
+	build_btn.text = T.t("build_tower_cost", {"n": game.tower_cost()})
+	wave_lbl.text = ("W%d" % maxi(game.wave, 1)) if game.wave_state != "lost" else T.t("lost")
 	var rem: int = game.remaining()
 	left_lbl.text = str(rem) if game.wave_state != "build" else str(game.wave_plan(game.wave + 1).size())
 	var building: bool = game.wave_state == "build"
@@ -934,14 +1077,14 @@ func _update_live(dt: float) -> void:
 			next_row.modulate.a = 0.0
 			create_tween().tween_property(next_row, "modulate:a", 1.0, 0.3)
 	if building:
-		next_lbl.text = "Remaining  %ds" % ceili(game.countdown)
+		next_lbl.text = T.t("remaining", {"s": ceili(game.countdown)})
 	if game.wave_state != _last_wave_state:
 		if game.wave_state == "spawning":
-			show_banner("WAVE %d" % game.wave)
+			show_banner(T.t("wave_banner", {"n": game.wave}))
 		elif game.wave_state == "build" and game.wave > 0:
-			show_banner("Wave cleared", S.GOOD)
+			show_banner(T.t("wave_cleared"), S.GOOD)
 		elif game.wave_state == "lost":
-			show_banner("THE CASTLE FELL", S.BAD)
+			show_banner(T.t("castle_fell"), S.BAD)
 		_last_wave_state = game.wave_state
 	ctrl_btns[0].icon = UISkin.tex("icon_play" if game.paused else "icon_pause")
 	for i in range(1, 4):
@@ -952,9 +1095,11 @@ func _update_live(dt: float) -> void:
 	if game.selected_tower != null and is_instance_valid(game.selected_tower):
 		var st = game.selected_tower
 		var mr: float = game.economy.tower_mana_rate(st)
-		tower_dps.text = ("%.1f DPS" % game.tower_dps(st) + ("  ·  +%.1f mana/s" % mr if mr >= 0.05 else "")) if st.rune != null else ""
+		tower_dps.text = T.t("dps", {"n": "%.1f" % game.tower_dps(st)}) if st.rune != null else ""
+		tower_mana.text = T.t("mana_rate", {"n": "%.1f" % mr}) if st.rune != null and mr >= 0.05 else ""
+		tower_mana.visible = tower_mana.text != ""
 	var mid: bool = game.wave_state in ["spawning", "fighting"]
 	save_btn.disabled = mid
-	save_btn.tooltip_text = "You can save between waves." if mid else ""
+	save_btn.tooltip_text = T.t("save_between_waves") if mid else ""
 	toast.text = game.message if game.message_t > 0.0 else ""
 	toast.modulate.a = clampf(game.message_t, 0.0, 1.0)

@@ -1,4 +1,5 @@
 extends Node3D
+const T := preload("res://ui/i18n.gd")
 ## RuneCraft MVP hub: random map, economy (mana / mana stone), waves, castle HP, tower
 ## building, rune inventory, combine (grade up), craft table (graft / ungraft) and the HUD.
 ## Command line (after "--"):  --seed N  --demo  --shots <dir>  --quit-after S
@@ -96,10 +97,13 @@ func _ready() -> void:
 	_load_settings()
 	if args.has("cam"):
 		settings["cam_angle"] = str(args["cam"])
+	if args.has("lang"):
+		settings["lang"] = str(args["lang"])
 	spec = JSON.parse_string(FileAccess.get_file_as_string("res://data/rune_mechanics_v1.json"))
 	colors = JSON.parse_string(FileAccess.get_file_as_string("res://data/rune_colors_v4.json")).runes
 	rl = load("res://scripts/rune_lib.gd").new("res://data/rune_mechanics_v1.json")
 	rl.set_locale("res://scripts/locale/%s.json" % settings.get("lang", "en"))
+	T.load_lang(str(settings.get("lang", "en")))
 	font_bold = preload("res://ui/style.gd").font("bold")
 	var e: Dictionary = spec.economy
 	mana = float(e.start.mana)
@@ -120,7 +124,7 @@ func _ready() -> void:
 	hud = HudScript.new()
 	add_child(hud)
 	hud.setup(self)
-	notify("Wave 1 incoming — build a tower and socket a rune.")
+	notify(T.t("msg_intro"))
 	_apply_settings()
 	if loaded != null:
 		saves.restore(loaded)
@@ -396,7 +400,7 @@ func _leak(e) -> void:
 	if castle_hp <= 0:
 		castle_hp = 0
 		wave_state = "lost"
-		notify("The castle has fallen! Wave %d." % wave)
+		notify(T.t("msg_castle_fell", {"n": wave}))
 	changed.emit()
 
 
@@ -421,7 +425,7 @@ func _waves(dt: float) -> void:
 				wave_state = "build"
 				countdown = 15.0
 				economy.on_wave_cleared()
-				notify("Wave %d cleared." % wave)
+				notify(T.t("msg_wave_cleared", {"n": wave}))
 				changed.emit()
 
 
@@ -435,7 +439,7 @@ func start_wave() -> void:
 	if countdown > 1.0:
 		var bonus := roundi(countdown)
 		mana += bonus
-		notify("Early call: +%d mana" % bonus)
+		notify(T.t("msg_early_call", {"n": bonus}))
 	countdown = 0.0
 	changed.emit()
 
@@ -560,11 +564,11 @@ func _update_ghost() -> void:
 
 func try_build(c: Vector2i) -> bool:
 	if not wb.buildable.has(c):
-		notify("You can't build here.")
+		notify(T.t("msg_cant_build"))
 		return false
 	var cost := tower_cost()
 	if stones < cost:
-		notify("Not enough mana stones (%d needed)." % cost)
+		notify(T.t("msg_need_stones", {"n": cost}))
 		return false
 	stones -= cost
 	var t = place_tower(c, cost)
@@ -684,7 +688,7 @@ func sell_tower(t) -> bool:
 	if t == null or not t in towers:
 		return false
 	if t.rune != null and store.free_slots() == 0:
-		notify("Inventory is full — free a slot first.")
+		notify(T.t("msg_inv_full"))
 		return false
 	var refund: int = economy.tower_refund(t)
 	if t.rune != null:
@@ -876,10 +880,10 @@ func _done(ok: bool) -> bool:
 func buy_rune(rid: String) -> bool:
 	var c := rune_cost(rid)
 	if mana < c:
-		notify("Not enough mana (%d needed)." % c)
+		notify(T.t("msg_need_mana", {"n": c}))
 		return false
 	if not store.put({"rune": rid, "grade": 1, "grafts": {}}):
-		notify("Inventory is full.")
+		notify(T.t("msg_inv_full"))
 		return false
 	mana -= c
 	economy.on_rune_bought(rid)
@@ -1049,6 +1053,68 @@ func _demo() -> void:
 	var dir: String = args.get("shots", "")
 	if dir != "":
 		_shots(dir)
+	if args.has("uishots"):
+		_ui_shots(str(args.uishots))
+
+
+## UI captures for the Craft tab / rune structure / inspector / tooltip / tower card (--demo --uishots DIR).
+func _ui_shots(dir: String) -> void:
+	DirAccess.make_dir_recursive_absolute(dir)
+	# table: a crafted Fire G4 with nested grafts as the base, plus one pending donor
+	store.clear_table()
+	var base := {"rune": "ice", "grade": 3, "grafts": {
+		"freeze": [{"rune": "electric", "grade": 3, "grafts": {"chain": [{"rune": "poison", "grade": 1, "grafts": {}}]}}],
+		"chill": [{"rune": "water", "grade": 2, "grafts": {}}, {"rune": "mana", "grade": 1, "grafts": {}}]}}
+	craft.base = base
+	craft.pending = {"ice_hit": [{"rune": "stone", "grade": 1, "grafts": {}}]}
+	for i in INV_SIZE:
+		if inventory[i] == null:
+			inventory[i] = {"rune": ["water", "golem", "hive", "meteor", "blood", "light"][i % 6], "grade": 1 + (i % 5), "grafts": {}}
+			if i > 14:
+				break
+	towers[0].set_rune(base.duplicate(true))
+	select_tower(towers[0])
+	hud.show_structure_of("base")
+	changed.emit()
+	await get_tree().create_timer(1.2).timeout
+	await _snap(dir, "01_craft")
+	var it = hud.struct_tree.root_item
+	hud.struct_tree.selected = it.kids[2]
+	hud.struct_tree.picked.emit(it.kids[2])
+	await get_tree().create_timer(0.3).timeout
+	await _snap(dir, "02_craft_ability")
+	var donor = it.kids[2].kids[0]
+	hud.struct_tree.selected = donor
+	hud.struct_tree.picked.emit(donor)
+	await get_tree().create_timer(0.2).timeout
+	hud.show_tip(hud.tip_for(base), hud.inv_slots[20])
+	await get_tree().create_timer(0.3).timeout
+	await _snap(dir, "03_tooltip")
+	hud.hide_tip(hud.tip_owner)
+	var deep := {"rune": "fire", "grade": 4, "grafts": {
+		"fire_hit": [{"rune": "electric", "grade": 3, "grafts": {"chain": [{"rune": "ice", "grade": 2, "grafts": {}}, {"rune": "poison", "grade": 1, "grafts": {}}]}},
+			{"rune": "water", "grade": 3, "grafts": {"push": [{"rune": "blood", "grade": 1, "grafts": {}}]}}],
+		"burn": [{"rune": "mana", "grade": 3, "grafts": {}}, {"rune": "stone", "grade": 2, "grafts": {"armor_shred": [{"rune": "light", "grade": 1, "grafts": {}}]}}],
+		"fire_trail": [{"rune": "ice", "grade": 3, "grafts": {"freeze": [{"rune": "electric", "grade": 2, "grafts": {}}]}}, {"rune": "golem", "grade": 1, "grafts": {}}]}}
+	towers[1].set_rune(deep)
+	select_tower(towers[1])
+	hud.inspect(deep, {"kind": "tower", "tower": towers[1]})
+	await get_tree().create_timer(0.6).timeout
+	await _snap(dir, "04_inspector")
+	var itd = hud.inspector.item
+	hud.inspector.tree.selected = itd.kids[0].kids[0]
+	hud.inspector.tree.picked.emit(itd.kids[0].kids[0])
+	await get_tree().create_timer(0.3).timeout
+	await _snap(dir, "05_inspector_donor")
+	hud.inspector.hide_inspector()
+	hud.select_tab("shop")
+	await get_tree().create_timer(0.4).timeout
+	await _snap(dir, "06_shop")
+	hud.select_tab("menu")
+	hud.settings_box.visible = true
+	await get_tree().create_timer(0.4).timeout
+	await _snap(dir, "07_menu")
+	get_tree().quit()
 
 
 ## Headless check: --savetest saves, reloads the scene from the save and prints both states.

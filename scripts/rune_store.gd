@@ -1,4 +1,5 @@
 extends RefCounted
+const T := preload("res://ui/i18n.gd")
 ## Every operation that moves runes between the inventory, the craft table and towers.
 ## Rule: an operation either completes or changes nothing — runes are never lost or duplicated
 ## (a full inventory makes the operation fail with a message instead of dropping a rune).
@@ -52,7 +53,7 @@ func all_items() -> Array:
 
 
 func _full() -> bool:
-	game.notify("Inventory is full — free a slot first.")
+	game.notify(T.t("msg_inv_full"))
 	return false
 
 
@@ -104,14 +105,14 @@ func combine(a: int, b: int) -> bool:
 	if ra == null or rb == null:
 		return false
 	if ra.rune != rb.rune or int(ra.grade) != int(rb.grade):
-		game.notify("Combine needs two runes of the same type and grade.")
+		game.notify(T.t("msg_combine_same"))
 		return false
 	if int(ra.grade) >= 5:
-		game.notify("G5 is the highest grade.")
+		game.notify(T.t("drop_max_grade"))
 		return false
 	var fee: int = game.combine_fee(int(ra.grade))
 	if game.mana < fee:
-		game.notify("Combining costs %d mana." % fee)
+		game.notify(T.t("msg_combine_cost", {"n": fee}))
 		return false
 	game.mana -= fee
 	var out := {"rune": ra.rune, "grade": int(ra.grade) + 1, "grafts": {}}
@@ -122,7 +123,7 @@ func combine(a: int, b: int) -> bool:
 			out.grafts[ab] += src.grafts[ab]
 	inv[a] = out
 	inv[b] = null
-	game.notify("%s G%d forged." % [game.rl.rune_name(out.rune), out.grade])
+	game.notify(T.t("msg_forged", {"rune": game.rl.rune_name(out.rune), "g": out.grade}))
 	return true
 
 
@@ -183,7 +184,7 @@ func add_pending(ability: String, idx: int) -> bool:
 	var d = inv[idx]
 	var res: Array = game.graft_check(ability, d)
 	if not res[0]:
-		game.notify("Graft rejected: " + (str(res[1][0]) if res[1].size() > 0 else "incompatible"))
+		game.notify(T.t("msg_graft_rejected", {"why": str(res[1][0]) if res[1].size() > 0 else T.t("incompatible")}))
 		return false
 	if not game.craft.pending.has(ability):
 		game.craft.pending[ability] = []
@@ -219,7 +220,7 @@ func ungraft(ability: String, i: int) -> bool:
 	lst.remove_at(i)
 	if lst.is_empty():
 		b.grafts.erase(ability)
-	game.notify("Graft removed — the rune is back, the fee is lost.")
+	game.notify(T.t("msg_ungrafted"))
 	return true
 
 
@@ -236,20 +237,20 @@ func merged() -> Dictionary:
 func craft() -> bool:
 	var c: Dictionary = game.craft
 	if c.base == null or c.pending.is_empty():
-		game.notify("Needs a base rune and at least one graft.")
+		game.notify(T.t("status_need_graft"))
 		return false
 	if c.output != null:
-		game.notify("Take the output rune first.")
+		game.notify(T.t("status_take_output"))
 		return false
 	var fee: int = game.craft_fee()
 	if game.mana < fee:
-		game.notify("Graft fee: %d mana." % fee)
+		game.notify(T.t("status_need_mana", {"n": fee}))
 		return false
 	game.mana -= fee
 	c.output = merged()
 	c.base = null
 	c.pending = {}
-	game.notify("Crafted — read the result on the output rune.")
+	game.notify(T.t("msg_crafted"))
 	return true
 
 

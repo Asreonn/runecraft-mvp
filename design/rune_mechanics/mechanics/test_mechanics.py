@@ -191,10 +191,56 @@ def run_economy():
     check("N2: two Mana donors are two producing nodes (two caps)", len(sips) == 2 and sim.mana_node_key(0, sips[0].uid) != sim.mana_node_key(0, sips[1].uid), str([o.uid for o in sips]))
 
 
+def run_ownership():
+    """Status stacking and credit (2026-10-31, user-approved recommendation): damage-over-time statuses are one
+    instance per tower; utility statuses stay one per recipe node; death effects belong to their owner."""
+    def op(recipe, status):
+        c = resolver.compile_recipe(recipe)
+        return [o for o in resolver._walk(c.ops) if o.family == "ApplyStatus" and o.params.get("status") == status][0]
+    burn = op("fire3", "burn")
+    w = sim.World(["fire3"], count=1)
+    e = w.enemies[0]
+    w.apply_status(e, burn, sim.Ctx(gen=0, budget={"left": 16}, tower=0))
+    w.apply_status(e, burn, sim.Ctx(gen=0, budget={"left": 16}, tower=1))
+    w.apply_status(e, burn, sim.Ctx(gen=0, budget={"left": 16}, tower=1))
+    burns = e.get("burn")
+    check("identical recipes on two towers: two burn instances", len(burns) == 2, str(len(burns)))
+    check("each burn instance keeps its own tower", sorted(v["tower"] for v in burns) == [0, 1])
+    pois = op("poison3", "poison")
+    w.apply_status(e, pois, sim.Ctx(gen=0, budget={"left": 16}, tower=0))
+    w.apply_status(e, pois, sim.Ctx(gen=0, budget={"left": 16}, tower=1))
+    check("identical poison from two towers: two instances", len(e.get("poison")) == 2)
+    slow = op("ice2", "slow")
+    w.apply_status(e, slow, sim.Ctx(gen=0, budget={"left": 16}, tower=0))
+    w.apply_status(e, slow, sim.Ctx(gen=0, budget={"left": 16}, tower=1))
+    check("utility status (slow) stays one instance per recipe node", len(e.get("slow")) == 1)
+    # contagion belongs to the poisoning tower, not to the killer
+    cont = op("poison4", "poison")
+    w = sim.World(["poison4"], count=2)
+    a, b = w.enemies[0], w.enemies[1]
+    b.x = a.x + 0.3
+    w.apply_status(a, cont, sim.Ctx(gen=0, budget={"left": 16}, tower=7))
+    w.kill(a, sim.Ctx(gen=0, budget={"left": 16}, tower=9))
+    got = [v["tower"] for v in b.get("poison")]
+    check("contagion keeps the poisoning tower's credit", got == [7], str(got))
+    # frozen-death shards belong to the freezing tower
+    c = resolver.compile_recipe("ice4")
+    fr = [o for o in resolver._walk(c.ops) if o.params.get("shards")][0]
+    w = sim.World(["ice4"], count=2)
+    a, b = w.enemies[0], w.enemies[1]
+    b.x = a.x + 0.3
+    b.hp = 10000
+    w.freeze(a, fr, 2.0, sim.Ctx(gen=0, budget={"left": 16}, tower=7))
+    w.kill(a, sim.Ctx(gen=0, budget={"left": 16}, tower=9))
+    bt = w.stats["by_tower"]
+    check("frozen-death shards credit the freezing tower", bt.get(7, 0) > 0 and bt.get(9, 0) == 0, str(bt))
+
+
 if __name__ == "__main__":
     run_scenarios()
     run_invariants()
     run_economy()
+    run_ownership()
     fails = [r for r in results if not r[1]]
     for name, ok, detail in results:
         if not ok or "-v" in sys.argv:

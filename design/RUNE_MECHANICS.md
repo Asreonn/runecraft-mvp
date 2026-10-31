@@ -134,7 +134,15 @@ Kalanlar v4'ten alındı ya da benim önerim; JSON'da `source` alanında işaret
    - Aynı kaynaktan üst üste binen alanlar yığılmaz.
    - 24 düğümlü stres tarifinde bu sınırların hepsi tutuyor.
 6. **Saflık:** Ana rünün statları değişmez. Üst yetenekler kapatılamaz.
-7. **Durumlar düşmanın üzerindedir**, hangi kuleden geldiği önemsizdir. Etkileşimler:
+7. **Durumlar düşmanın üzerindedir.** İstifleme ve sahiplik (2026-10-31, `DECISIONS.md` karar 10):
+   - **Süreli hasar (yanma, zehir, kanama) kule başına ayrı örnektir.** Aynı tarifli iki kule aynı düşmanı
+     ikisi de yakar; her örneğin kendi saati ve hasar kaydı vardır. Aynı kule kendi örneğini tazeler.
+   - **Yardımcı durumlar (yavaşlatma, ıslak, zırh kırma, kamaşma, ışık, mana işareti) tarif düğümü başına tektir**
+     ve en güçlüsü geçerlidir; iki kule bunları katlayamaz.
+   - **Ölüm etkileri sahibine yazılır:** zehir bulaşması zehirleyen kuleye, donmuş ölüm kırıkları donduran kuleye,
+     kristal aşıları işaretleyen kuleye. Öldüren kule bunları almaz.
+
+   Etkileşimler:
    - ıslak + elektrik ×1,5 hasar, sekme ıslak hedefi seçer;
    - ıslak hedef bir soğuk eksikle donar;
    - ıslak hedefte yanma yarı sürer ve kurur;

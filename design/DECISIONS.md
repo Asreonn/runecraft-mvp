@@ -1,6 +1,6 @@
 # RuneCraft — current decisions (authoritative)
 
-Last update: 2026-10-31 (revision task "Hata Düzeltme, Mekanik Revizyon ve Dokümantasyon Senkronizasyonu").
+Last update: 2026-10-31 (Craft UI / Rune Inspector / UX-QA revision; earlier the same day: "Hata Düzeltme, Mekanik Revizyon ve Dokümantasyon Senkronizasyonu").
 
 **Precedence.** This file wins over every other document: `RUNE_MECHANICS.md`, the reports, the GDD and briefs in
 `design/source_package/`, and older TODO wording. Older documents are kept for history. Where they disagree, the
@@ -22,15 +22,18 @@ Status labels used here and in `TODO.md`:
 | # | Decision | Status |
 |---|---|---|
 | 1 | RuneCraft is a **3D voxel** tower-defense game, viewed from a high orthographic angle, minimalist. | decided |
-| 2 | **Camera:** 90° top-down is *not* required (an earlier review claiming it was is wrong). 45° is the current default but **not final approved**. ~30° and a zoom-dependent angle are being evaluated. Whatever is chosen must keep towers, runes, enemies, elevation and VFX readable at all zoom levels, and must not break controls, targeting or grid coordinates. | evaluating (Settings → *Camera angle (testing)*: 45° / 30° / zoom-based) |
-| 3 | The **Mana rune stays** (an earlier suggestion to drop it is void). It is the economy rune: grafting or socketing it lets the player build a mana-heavy strategy. | decided; mechanics implemented and provisional |
-| 4 | **Shop prices grow multiplicatively** with purchases, for runes and towers. The ratios are examples (1.1×, 1.2× …), not final. | decided; implemented and provisional |
+| 2 | **Camera:** 90° top-down is *not* required. **45° is the default** (the user approved Claude's recommendation, 2026-10-31). 30° and a zoom-dependent angle stay available as options. Any angle must keep towers, runes, enemies, elevation and VFX readable at all zoom levels and must not break controls, targeting or grid coordinates. | decided (Settings → *Camera angle*: 45° default, 30°, zoom-based) |
+| 3 | The **Mana rune stays** (an earlier suggestion to drop it is void). It is the economy rune: grafting or socketing it lets the player build a mana-heavy strategy. | decided; implemented; numbers are the approved baseline (decision 9) |
+| 4 | **Shop prices grow multiplicatively** with purchases, for runes and towers. Current ratios are the approved baseline (decision 9), to be tuned with playtest data. | decided; implemented |
 | 5 | The **grafting paradigm stays**: unlimited nested grafts, the automatic compiler, and no mandatory pre-craft preview. The output rune's description is shown after crafting. | decided, implemented |
 | 6 | **Rune readability** must improve: rune identity, grade, which donor feeds which ability, nested grafts, active / locked / incompatible states — without cluttering the world. | decided; first pass implemented |
 | 7 | **Light / Fog of War**, **Golem defence** and **Poison heal suppression** stay in the design. They gain meaning later: fog and exploration, enemies attacking summons, healer enemies. They are not built now and must not be removed. | future |
 | 8 | **Roguelike scope** is the long-term goal, not built now: tower chassis / variety, global artifacts, local tower modifiers, post-wave rewards, map exploration + fog, chests / merchants / finds, multiple biomes, three castles / stages, god powers, run-based progression, the Demon God story and rebirth cycle. Nothing here is cancelled. | future |
+| 9 | **Open questions settled by the user's "everything in F per Claude's recommendation" (2026-10-31):** the shop and Mana numbers below are the approved baseline (tune later with playtest data); the **high-ground +1 range bonus stays**; **saving stays between waves only**; **status stacking** follows rule 10. | decided |
+| 10 | **Status stacking and credit:** damage-over-time statuses (**burn, poison, bleed**) are **one instance per tower** — two towers with the same recipe each burn the enemy with their own clock and credit. Utility statuses (**slow, wet, armor shred, blind, lit, mana mark**) stay one instance per recipe node and the strongest wins, so they never multiply. Death effects (**poison contagion, frozen-death shards, crystal grafts**) are credited to the tower that owns the effect, never to the killer. | decided; implemented in Godot and the Python reference, tested |
+| 11 | **Rune readability (UI v6):** the rune is shown as a **radial stone tree** — the main rune in the middle, its abilities on an engraved glyph ring, donor runes branching outward through carved grooves, nested donors further out. The Craft tab shows abilities + direct donors; the floating Inspector shows the whole recipe. No metadata subtitles ("14 runes · depth 3"). **Grade reads like loot rarity**: the slot behind the rune glows grey / green / blue / purple / gold (G1–G5). Rune icons are renders of the in-game 3D voxel runes. | decided by the user's feedback; implemented |
 
-## Implemented numbers (all provisional, in `data/rune_mechanics_v1.json`)
+## Implemented numbers (approved baseline per decision 9, in `data/rune_mechanics_v1.json`)
 
 ### Shop (`economy.shop`)
 
@@ -95,13 +98,16 @@ Interpretation:
 - Towers target enemies whose cell is within range (cell-centre distance), and ground fields cover one cell.
 - This differs on purpose from the Python reference's continuous radius. The differences are measured in the
   parity report.
-- The **high-ground bonus** (+1 range on plateaus) is in the code and **awaits user approval**.
+- The **high-ground bonus** (+1 range on plateaus) **stays** (decision 9).
+
+## Measurements after the UI revision (Codex c1, commit 5065a12, before rule 10)
+
+108 complete eight-wave runs on seeds 3 / 17 / 42 (`docs/ECONOMY_STACKING.md`):
+- Mana G1 / G3 / G5 at the **front** of the path: +19.8 % / +55.4 % / +97.7 % total mana; in the **middle** +10.5 / +31.8 / +51.0 %; at the **back** +4.0 / +10.9 / +15.1 %. Placement matters ~5×.
+- 1 → 6 towers carrying the same Mana recipe grow **sublinearly** (Mana G3: 2.93× for 6×). No reinvestment loop was found in eight waves.
+- Shop: no profit loop in buy / combine / build / sell cycles (448 refund fixtures; selling always loses stones).
 
 ## Known open design questions
 
-- Should two towers with an identical recipe stack the same status on one enemy?
-  - Today the second application refreshes the first instance, and ticks are attributed to the first tower.
-  - Both the Godot and Python implementations behave this way.
-- The camera angle (decision 2).
-- Balance of shop growth ratios, Mana income caps and tower price growth (decisions 3–4).
-- The high-ground +1 range bonus.
+- **Recipe width × Mana siphon (new, needs a decision):** every Mana donor on one ability siphons the *whole* event's damage into its own capped bucket, so 1 → 64 donors on one Fire hit gives 7 → 940 mana per hit (superlinear, 134×). Graft fees grow ×1.3 per node, so wide recipes are expensive, but the payback has not been measured. Recommendation: one Mana total cap per tower (e.g. the highest node cap × 1.5) on top of the per-node caps. Not changed without approval.
+- Long-horizon economy (more than eight waves, reinvestment, net return of buying high-grade grafts) is not measured yet.

@@ -1,4 +1,5 @@
 extends RefCounted
+const T := preload("res://ui/i18n.gd")
 ## Save / load. A save holds everything the player owns and the economy state; the map is regenerated from its
 ## seed. Saving is only allowed between waves (build phase), so a load always resumes at a clean "next wave"
 ## point — no wave can be skipped or replayed for extra resources. `serialize()` itself works at any time: during
@@ -99,31 +100,31 @@ static func ints(v):
 
 func save(path: String) -> bool:
 	if game.wave_state in ["spawning", "fighting"]:
-		game.notify("You can save between waves.")
+		game.notify(T.t("save_between_waves"))
 		return false
 	if game.wave_state == "lost":
-		game.notify("The castle has fallen — nothing to save.")
+		game.notify(T.t("msg_nothing_to_save"))
 		return false
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	if f == null:
-		game.notify("Could not save.")
+		game.notify(T.t("msg_save_failed"))
 		return false
 	f.store_string(JSON.stringify(serialize()))
 	f.close()
-	game.notify("Game saved (wave %d cleared)." % game.wave)
+	game.notify(T.t("msg_saved", {"n": game.wave}))
 	return true
 
 
 ## Reads and validates `path`. Returns the save Dictionary (grades as ints) or null; never changes the game.
 func read(path: String):
 	if not FileAccess.file_exists(path):
-		game.notify("No saved game yet.")
+		game.notify(T.t("msg_no_save"))
 		return null
 	var js := JSON.new()                      # quiet parse: a corrupt file is a normal, reported case
 	var d = js.data if js.parse(FileAccess.get_file_as_string(path)) == OK else null
 	var why := check(d)
 	if why != "":
-		game.notify("Cannot load: %s." % why)
+		game.notify(T.t("msg_load_failed", {"why": why}))
 		return null
 	return ints(d)
 
@@ -157,7 +158,7 @@ func restore(d: Dictionary) -> bool:
 	game.wave_state = "build"
 	game.countdown = float(d.get("countdown", 20.0))      # restored too: reloading must not refill the early-call bonus
 	game.selected_tower = null
-	game.notify("Game loaded — wave %d next." % (game.wave + 1))
+	game.notify(T.t("msg_loaded", {"n": game.wave + 1}))
 	game.changed.emit()
 	return true
 

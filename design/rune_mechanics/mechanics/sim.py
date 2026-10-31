@@ -29,6 +29,7 @@ class Enemy:
     st: dict = field(default_factory=dict)      # (status, uid) -> dict
     frozen_until: float = -1.0
     frozen_by: object = None
+    frozen_tower: object = None
     stun_until: float = -1.0
     stun_icd: dict = field(default_factory=dict)
 
@@ -266,8 +267,8 @@ class World:
             self.stats["stones"] += int(v["op"].params["crystal"])
             subs = v["op"].slots.get("crystal", [])
             tgt = self.nearest(e.x, exclude={e.id}, within=1.0)
-            if subs and tgt is not None:
-                self.run_event(subs, tgt, tgt.x, Ctx(gen=1, budget={"left": BUD["applications_per_root_event"]}, tower=ctx.tower), carrier="death")
+            if subs and tgt is not None:     # credited to the marking tower, not to the killer
+                self.run_event(subs, tgt, tgt.x, Ctx(gen=1, budget={"left": BUD["applications_per_root_event"]}, tower=v.get("tower", ctx.tower)), carrier="death")
         if self.stats["first_kill"] is None:
             self.stats["first_kill"] = round(self.t, 2)
         root = Ctx(gen=0, budget={"left": BUD["applications_per_root_event"]}, tag="death", tower=ctx.tower)
@@ -283,7 +284,7 @@ class World:
                 if tgt is None:
                     break
                 hit.add(tgt.id)
-                c = Ctx(gen=1, budget=root.budget, tag="shard", tower=ctx.tower)
+                c = Ctx(gen=1, budget=root.budget, tag="shard", tower=e.frozen_tower if e.frozen_tower is not None else ctx.tower)
                 self.deal(tgt, op.params["shard_dmg"], "ice", c, cause="shard")
                 self.run_event(subs, tgt, tgt.x, c, carrier="retarget")
                 self._hop("buz parçası " + ("hedef arayıp seker" if seek else "düşer"))
@@ -294,13 +295,16 @@ class World:
                 if tgt is not None:
                     self.stats["contagion"] += 1
                     stacks = max(1, math.ceil(v["stacks"] * v["op"].params["contagion"]))
-                    self.apply_status(tgt, v["op"], Ctx(gen=1, budget=root.budget, tower=ctx.tower), stacks=stacks)
-                    self.run_event(v["op"].slots.get("infect", []), tgt, tgt.x, Ctx(gen=1, budget=root.budget, tower=ctx.tower), carrier="death")
+                    owner = v.get("tower", ctx.tower)      # the poisoning tower owns the contagion
+                    self.apply_status(tgt, v["op"], Ctx(gen=1, budget=root.budget, tower=owner), stacks=stacks)
+                    self.run_event(v["op"].slots.get("infect", []), tgt, tgt.x, Ctx(gen=1, budget=root.budget, tower=owner), carrier="death")
 
     # -- statuses
     def apply_status(self, e: Enemy, o, ctx: Ctx, stacks=1):
         p, s = o.params, o.params["status"]
         key = (s, o.uid)
+        if s in ("burn", "poison", "bleed"):   # damage-over-time: one instance per tower
+            key = (s, ctx.tower, o.uid)
         self.stats["statuses"][s] = self.stats["statuses"].get(s, 0) + 1
         if ctx.gen > 0:
             self.stats["spread_status"] += 1
@@ -399,6 +403,7 @@ class World:
     def freeze(self, e: Enemy, o, dur, ctx: Ctx, nova=False):
         e.frozen_until = max(e.frozen_until, self.t + dur)
         e.frozen_by = o
+        e.frozen_tower = ctx.tower
         self.stats["frozen"] += 1
         subs = o.slots.get("freeze", [])
         if subs and not nova:

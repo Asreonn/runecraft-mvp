@@ -179,9 +179,12 @@ func _fire(t) -> void:
 		game.vfx.beam(_muzzle(), t.global_position + Vector3(0, 0.45, 0), el)
 		game.combat.run_event(hit_ops, t, t.tile_pos(), root_ctx())
 		return
+	# capture the target's id, not the target: the enemy may be freed while the bolt flies
+	var tid: int = t.get_instance_id()
 	game.vfx.projectile(_muzzle(), t, el, rune.rune, func():
-		if is_instance_valid(t) and t.alive and not t.leaked:
-			game.combat.run_event(hit_ops, t, t.tile_pos(), root_ctx())
+		var tt = instance_from_id(tid)
+		if tt != null and tt.alive and not tt.leaked:
+			game.combat.run_event(hit_ops, tt, tt.tile_pos(), root_ctx())
 	)
 
 
@@ -236,9 +239,11 @@ func _volcano(dt: float) -> void:
 		for i in int(P.blobs):
 			var tgt = near[i % near.size()]
 			var ops: Array = hit_ops + (extra if i > 0 else [])
+			var tid: int = tgt.get_instance_id()
 			game.vfx.lava_blob(entity.pos + Vector3(0, 1.0, 0), tgt, float(P.flight), func():
-				if g == rune_gen and is_instance_valid(tgt) and tgt.alive and not tgt.leaked:
-					game.combat.run_event(ops, tgt, tgt.tile_pos(), root_ctx())
+				var tt = instance_from_id(tid)
+				if g == rune_gen and tt != null and tt.alive and not tt.leaked:
+					game.combat.run_event(ops, tt, tt.tile_pos(), root_ctx())
 			)
 
 

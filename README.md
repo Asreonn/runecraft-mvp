@@ -13,18 +13,20 @@ yet).
 - [design/DECISIONS.md](design/DECISIONS.md) — current decisions; they override older documents.
 - [TODO.md](TODO.md) — every request and its status (Turkish).
 - [docs/PARITY_REPORT.md](docs/PARITY_REPORT.md) — Godot runtime vs. the Python reference.
+- [docs/ECONOMY_STACKING.md](docs/ECONOMY_STACKING.md) — Mana economy, shop loops, status stacking.
+- [docs/UI_REVIEW.md](docs/UI_REVIEW.md) — Craft tab, rune tree and inspector redesign with before / after captures.
 
 ![Gameplay](docs/gameplay.jpg)
 
-| Shop | Menu (paused) | Rune inspector |
-|---|---|---|
-| ![Shop](docs/shop.jpg) | ![Menu](docs/menu.jpg) | ![Inspector](docs/inspector.jpg) |
+| Craft tab | Rune inspector | Shop | Menu (paused) |
+|---|---|---|---|
+| ![Craft](docs/ui/after_craft_tab.jpg) | ![Inspector](docs/inspector.jpg) | ![Shop](docs/shop.jpg) | ![Menu](docs/menu.jpg) |
 
 ## Run
 
 ```sh
 godot --path .                    # play (Godot 4.7, GL Compatibility)
-bash tests/run.sh                 # headless invariant tests
+bash tests/run.sh                 # headless invariant tests (1462 checks)
 python3 design/rune_mechanics/mechanics/test_mechanics.py   # reference mechanics tests
 ```
 
@@ -43,8 +45,9 @@ Models, UI textures and fonts are loaded from `assets/` and `fonts/` at runtime,
 | B or Shop → Build tower | build mode; Shift keeps building; right-click / Esc cancels |
 | N or Start now | next wave |
 | Drag and drop | move runes between inventory, craft table and towers; drop equal runes on each other to combine |
-| Right-click a rune | open the rune inspector (the full graft tree) |
-| Tabs | Craft (table + inventory), Shop (build tower + runes, prices grow with purchases), Menu (pauses the game; resume, settings, save between waves, load, quit) |
+| Right-click a rune | open the rune inspector (the full radial graft tree); Esc / ✕ / click outside closes it |
+| Tabs | Craft (rune table → rune structure → inventory), Shop (build tower + runes, prices grow with purchases), Menu (pauses the game; resume, settings incl. language, save between waves, load, quit) |
+| Rune structure | click an ability or donor in the tree to read what it does; hover previews; *Details* opens the inspector |
 
 ## Features
 
@@ -64,7 +67,11 @@ Models, UI textures and fonts are loaded from `assets/` and `fonts/` at runtime,
   - Saves are versioned and validated. Saving is allowed between waves only.
 - **UI.**
   - A carved-stone HUD designed in Penpot and exported at 2×.
-  - English text; the rune descriptions are localisation-ready (EN/TR).
+  - Runes are read as a **radial stone tree**: the main rune in the middle, abilities on a glyph ring, donors
+    branching outward through carved grooves.
+  - **Grade reads like loot rarity** (grey, green, blue, purple, gold light behind the rune); rune icons are renders
+    of the 3D runes.
+  - English and Turkish UI.
 
 ## Layout
 
@@ -74,7 +81,8 @@ Models, UI textures and fonts are loaded from `assets/` and `fonts/` at runtime,
 | `ui/` | HUD, craft table, slots, rune inspector, Penpot texture skin |
 | `data/` | Rune mechanics spec (JSON) and rune colours |
 | `assets/` | Runtime GLBs (tiles, props, runes, units, summons) and UI PNGs. The `.vox` sources are **not** in this repo |
-| `tests/` | Headless invariant suite |
+| `tests/` | Headless invariant suite; `tests/ui/` UI interaction and layout checks (real renderer) |
+| `tools/` | Rune icon renderer |
 | `design/` | Decisions, rune mechanics design, Python reference implementation + tests + reports, historical GDD and briefs |
 | `docs/` | Project overview, parity report, screenshots |
 | `ui_design/` | Penpot-side generator script and the export pull script |
@@ -83,7 +91,8 @@ Models, UI textures and fonts are loaded from `assets/` and `fonts/` at runtime,
 
 - **Design.** All UI art is designed in Penpot (page "HUD v3 · Stone"). Boards named `rcui / <name>` are exported at
   2× and uploaded as media `rcui__<name>`.
-- **Pull.** `ui_design/pull_penpot_exports.sh` copies them into `assets/ui/`.
+- **Pull.** `ui_design/pull_penpot_exports.sh` copies them into `assets/ui/`; `ui_design/pull_penpot_sheets.sh` cuts
+  whole exported kit sheets (faster).
 - **Requirements.** Refreshing the textures needs the Penpot file and a local Penpot instance.
 
 ## Credits

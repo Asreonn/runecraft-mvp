@@ -1,5 +1,5 @@
 extends Control
-## A rune slot: chamfered inset well + rune icon. Drag source and drop target via callbacks.
+## A rune slot: square well + rune icon on its grade (rarity) light. Drag source and drop target via callbacks.
 ## kind: "inv" | "base" | "graft" | "pending" | "output" | "socket" | "shop"
 
 const S := preload("res://ui/style.gd")
@@ -24,6 +24,8 @@ var hover_t := 0.0
 var drop_t := 0.0                  # 0..1 "can accept the current drag" glow
 var drop_hint: Callable            # func(data) -> String shown next to the dragged rune
 var pulse := 0.0
+var bad_t := 0.0                   # 0..1 "the hovered drag cannot land here" (incompatible / locked)
+var locked := false               # an ability that is not open yet (shown, not droppable)
 
 
 func _init(g, k: String, i: Variant = -1, sz := Vector2(58, 58)) -> void:
@@ -63,23 +65,32 @@ func _process(dt: float) -> void:
 		var d = vp.gui_get_drag_data()
 		if d is Dictionary and d.get("from") != self and can_drop.call(d):
 			dt_target = 1.0
+	var bad_target := 0.0
+	if dragging and hover and dt_target == 0.0 and kind != "shop":
+		var d2 = vp.gui_get_drag_data()
+		if d2 is Dictionary and d2.get("from") != self:
+			bad_target = 1.0
 	if dragging:
 		target = 0.0 if dt_target == 0.0 else target
 	var changed := false
+	if absf(bad_t - bad_target) > 0.01:
+		bad_t = move_toward(bad_t, bad_target, dt * 10.0)
+		changed = true
 	if absf(hover_t - target) > 0.01:
 		hover_t = move_toward(hover_t, target, dt * 9.0)
 		changed = true
 	if absf(drop_t - dt_target) > 0.01:
 		drop_t = move_toward(drop_t, dt_target, dt * 8.0)
 		changed = true
-	if drop_t > 0.01:
+	if drop_t > 0.01 or bad_t > 0.01:
 		pulse += dt
 		changed = true
 	if changed:
 		queue_redraw()
 
 
-## Socket art is the Penpot export for the current state (slot_normal / hover / selected / drop / output).
+## Socket art is the Penpot export for the current state (slot5_normal / hover / selected / drop / invalid / output /
+## pending / locked): square wells with one rim colour per state — nothing round behind the rune.
 func _draw() -> void:
 	if size.x < 8.0 or size.y < 8.0:
 		return
@@ -89,27 +100,35 @@ func _draw() -> void:
 		st = "hover"
 	if selected:
 		st = "selected"
+	if kind in ["pending"]:
+		st = "pending"
+	if locked:
+		st = "locked"
 	if kind == "output" and node != null:
 		st = "output"
 	if drop_t > 0.05:
 		st = "drop"
-	if drop_t > 0.01:          # extra pulsing rune light while a drag can land here
-		var a := drop_t * (0.18 + 0.12 * sin(pulse * 6.0)) + (0.2 if hover else 0.0) * drop_t
-		var glow := UISkin.tex("vfx_glow")
-		draw_texture_rect(glow, r.grow(10.0), false, Color(S.RUNE, a))
+	if bad_t > 0.05:
+		st = "invalid"
+	if drop_t > 0.01 or bad_t > 0.01:          # square rune light around a slot that can (or cannot) take the drag
+		var a := maxf(drop_t, bad_t) * (0.55 + 0.25 * sin(pulse * 6.0))
+		draw_texture_rect(UISkin.tex("slot5_glow_bad" if bad_t > drop_t else "slot5_glow"), r.grow(r.size.x * 0.25), false, Color(1, 1, 1, a))
 	draw_style_box(_box(st), r)
+	var well := r.grow(-r.size.x * 5.0 / 64.0)
 	if node != null:
-		var grow := -6.0 + 2.0 * hover_t
-		Icon.draw(self, r.grow(grow), node, game, dim)
+		Icon.draw(self, well, node, game, dim, hover_t)
+	elif locked:
+		var ls := minf(22.0, size.x * 0.4)
+		draw_texture_rect(UISkin.tex("icon_lock"), Rect2(r.get_center() - Vector2(ls, ls) * 0.5, Vector2(ls, ls)), false, Color(1, 1, 1, 0.55))
 	elif hint != "":
 		var f := S.font("medium")
 		var fs := 22 if hint.length() <= 1 else 12
 		var ts := f.get_string_size(hint, HORIZONTAL_ALIGNMENT_CENTER, -1, fs)
 		draw_string(f, Vector2(roundf((size.x - ts.x) * 0.5), roundf(size.y * 0.5 + fs * 0.35)), hint, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(S.TEXT_MUTED, 0.8 + 0.2 * drop_t))
 	if stack_pending > 0:
-		_badge("+%d" % stack_pending, Vector2(size.x - 1, size.y - 16), Color("#2F6FA8"))
+		_badge("+%d" % stack_pending, Vector2(size.x - 1, size.y - 16), "badge_rune")
 	if stack_existing > 0:
-		_badge("%d" % stack_existing, Vector2(size.x - 1, 1), Color("#4E4E58"))
+		_badge("%d" % stack_existing, Vector2(size.x - 1, 1), "badge_dark")
 
 
 static var _boxes: Dictionary = {}
@@ -117,17 +136,16 @@ static var _boxes: Dictionary = {}
 
 func _box(st: String) -> StyleBox:
 	if not _boxes.has(st):
-		_boxes[st] = UISkin.box("slot_" + st)
+		_boxes[st] = UISkin.box("slot5_" + st, Vector4(12, 12, 12, 12))
 	return _boxes[st]
 
 
-func _badge(text: String, at: Vector2, fill: Color) -> void:
+func _badge(text: String, at: Vector2, tex: String) -> void:
 	var f := S.font("bold")
-	var w := f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x + 8.0
-	var rr := Rect2(at - Vector2(w, 0), Vector2(w, 15))
-	draw_rect(rr, Color("#120E0B"))
-	draw_rect(rr.grow(-1), fill)
-	draw_string(f, rr.position + Vector2(4, 12), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color.WHITE)
+	var w := f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x + 10.0
+	var rr := Rect2(at - Vector2(w, 0), Vector2(w, 16))
+	draw_style_box(UISkin.box(tex, Vector4(5, 5, 5, 5)), rr)
+	draw_string(f, rr.position + Vector2(5, 12), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color.WHITE)
 
 
 func _gui_input(ev: InputEvent) -> void:
@@ -136,7 +154,7 @@ func _gui_input(ev: InputEvent) -> void:
 			on_click.call(ev.double_click)
 			accept_event()
 	elif ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_RIGHT and node != null:
-		game.hud.inspect(node)              # right-click any rune: full graft tree
+		game.hud.inspect(node, {"kind": "tower", "tower": game.selected_tower} if kind == "socket" else {})   # right-click: full tree
 		accept_event()
 
 

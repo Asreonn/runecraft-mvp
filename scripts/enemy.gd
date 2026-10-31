@@ -24,6 +24,7 @@ var leaked := false
 var st: Dictionary = {}           # "status|uid" -> Dictionary
 var frozen_until := -1.0
 var frozen_by = null
+var frozen_tower := -1               # tower that froze it (owns the frozen-death shards)
 var stun_until := -1.0
 var stun_icd: Dictionary = {}
 var path: Curve3D
