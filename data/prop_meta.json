@@ -1,0 +1,214 @@
+{
+"deco_boulder_large": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_bush_block_a": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_bush_block_b": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_bush_block_c": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_bush_cluster": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_bush_single": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_bush_stack": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_crate": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_fence": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_flower_clover_blue": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_flower_clover_red": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_flower_clover_white": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_flower_pair": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_flower_single": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_flower_tiny_white": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_flower_tiny_yellow": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_grass_cube": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_grass_tiny": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_log_short": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_reeds": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_rock_block_a": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_rock_block_b": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_rock_block_c": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_rock_mountain_a": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_rock_mountain_b": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_rock_outcrop": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_stone_cube": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_stone_pair": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_tree_box_big": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_tree_box_big_cool": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_tree_box_big_warm": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_tree_box_side": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_tree_box_side_cool": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_tree_box_side_warm": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_tree_box_small": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_tree_box_small_cool": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_tree_box_small_warm": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_tree_box_tall": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_tree_box_tall_cool": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_tree_box_tall_warm": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_tree_cubes_a": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_tree_cubes_a_cool": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_tree_cubes_a_warm": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_tree_cubes_b": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_tree_cubes_b_cool": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_tree_cubes_b_warm": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_tree_cubes_c": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_tree_cubes_c_cool": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_tree_cubes_c_warm": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_tree_round": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_tree_round_cool": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_tree_round_warm": {
+"cx": 0.0,
+"cz": 0.0
+},
+"deco_wood_marker": {
+"cx": 0.0,
+"cz": 0.0
+}
+}

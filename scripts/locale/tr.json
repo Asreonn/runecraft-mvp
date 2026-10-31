@@ -1,0 +1,443 @@
+{
+  "locale_id": "tr",
+  "decimal": ",",
+  "runes": {
+    "fire": {
+      "name": "Ateş",
+      "identity": "Doğrudan ısı → yanma → yanan düşmanın arkasında ateş izi.",
+      "abilities": {
+        "fire_hit": {
+          "name": "Ateş isabeti",
+          "desc": "{hit} ateş hasarlı mermi."
+        },
+        "burn": {
+          "name": "Yanma",
+          "desc": "İsabet yakar: {burn_dps}/sn × {burn_dur} sn."
+        },
+        "fire_trail": {
+          "name": "Ateş izi",
+          "desc": "Yanan düşman arkasında {trail_dur} sn yanan iz bırakır; izdeki düşmanlar {trail_dps}/sn ateş hasarı alır."
+        }
+      }
+    },
+    "ice": {
+      "name": "Buz",
+      "identity": "Buz vuruşu → yavaşlatma → donma → donmuş ölümde parçalar → çevreyi dondurma.",
+      "abilities": {
+        "ice_hit": {
+          "name": "Buz isabeti",
+          "desc": "{hit} buz hasarı."
+        },
+        "chill": {
+          "name": "Yavaşlatma",
+          "desc": "%{slow_pct} yavaşlatır ({slow_dur} sn)."
+        },
+        "freeze": {
+          "name": "Donma",
+          "desc": "Her isabet 1 soğuk; {cold_threshold} soğukta {freeze} sn donar."
+        },
+        "ice_shards": {
+          "name": "Buz parçaları",
+          "desc": "Donmuşken ölen düşman {shards} parçaya ayrılır; yakındakilere {shard_dmg} buz hasarı."
+        },
+        "frost_nova": {
+          "name": "Çevreyi dondurma",
+          "desc": "Bir düşman donunca {nova_r} karo içindekiler de yarı süre donar."
+        }
+      }
+    },
+    "electric": {
+      "name": "Elektrik",
+      "identity": "Elektrik vuruşu → sekme → aşırı yük (boşalma + şok).",
+      "abilities": {
+        "electric_hit": {
+          "name": "Elektrik isabeti",
+          "desc": "{hit} elektrik hasarı."
+        },
+        "chain": {
+          "name": "Sekme",
+          "desc": "Saldırı {chain} yakın hedefe seker (her sekmede güç ×{chain_power})."
+        },
+        "overload": {
+          "name": "Aşırı yük",
+          "desc": "Her elektrik isabeti 1 yük; {charge_max} yükte boşalır: +{discharge} elektrik ve {shock} sn şok."
+        }
+      }
+    },
+    "poison": {
+      "name": "Zehir",
+      "identity": "Zehir DoT → yığılma → iyileşme baskısı → ölümde bulaşma. Patlamaz, yerde alan bırakmaz (v4).",
+      "abilities": {
+        "poison_tick": {
+          "name": "Zehir tiki",
+          "desc": "İsabet zehirler: {dps}/sn × {dur} sn."
+        },
+        "toxic_stack": {
+          "name": "Yığılma",
+          "desc": "Zehir {max_stacks} yığına kadar birikir (yığın başına +%50)."
+        },
+        "heal_suppression": {
+          "name": "İyileşme baskısı",
+          "desc": "Zehirli düşmanın iyileşmesi %{heal_supp_pct} azalır."
+        },
+        "contagion": {
+          "name": "Bulaşma",
+          "desc": "Zehirli ölen düşmanın yığınlarının %{contagion_pct}'si en yakın düşmana geçer (patlama yok)."
+        }
+      }
+    },
+    "water": {
+      "name": "Su",
+      "identity": "Su vuruşu → ıslatma → geri itiş → dalga.",
+      "abilities": {
+        "water_hit": {
+          "name": "Su isabeti",
+          "desc": "{hit} su hasarı."
+        },
+        "wet": {
+          "name": "Islatma",
+          "desc": "{wet_dur} sn ıslatır (ıslak: elektrikten ×1,5, daha çabuk donar, yanma kısalır)."
+        },
+        "push": {
+          "name": "Geri itiş",
+          "desc": "Hedefi yol boyunca {push} karo geri iter (yanan hedef ×1,5)."
+        },
+        "wave": {
+          "name": "Dalga",
+          "desc": "Su isabeti dalga olur: {wave_r} karo içindekilere %25 hasar, ıslaklık ve itiş."
+        }
+      }
+    },
+    "stone": {
+      "name": "Taş",
+      "identity": "Ağır darbe → zırh aşındırma → parçalar → sarsıntı.",
+      "abilities": {
+        "stone_hit": {
+          "name": "Ağır darbe",
+          "desc": "{hit} fiziksel hasar."
+        },
+        "armor_shred": {
+          "name": "Zırh aşındırma",
+          "desc": "Zırhı 3 sn %{shred_pct} azaltır."
+        },
+        "fragments": {
+          "name": "Taş parçaları",
+          "desc": "Çarpmada {frags} parça yakındakilere isabetin %50'sini taşır."
+        },
+        "concussion": {
+          "name": "Sarsıntı",
+          "desc": "İsabet {stun} sn sersemletir (aynı hedefe 2 sn'de bir)."
+        }
+      }
+    },
+    "light": {
+      "name": "Işık",
+      "identity": "Işın → kamaşma → delme → aydınlatma işareti.",
+      "abilities": {
+        "light_beam": {
+          "name": "Işın",
+          "desc": "{hit} ışık hasarlı ışın."
+        },
+        "dazzle": {
+          "name": "Kamaşma",
+          "desc": "{blind_dur} sn kamaştırır: düşman saldırılarının isabeti %30 düşer."
+        },
+        "pierce": {
+          "name": "Delme",
+          "desc": "Işın {pierce} hedefi daha deler (her delişte ×0,6)."
+        },
+        "illuminate": {
+          "name": "Aydınlatma",
+          "desc": "Vurulan düşman 3 sn aydınlanır: tüm kulelerden +%{lit_pct} hasar alır."
+        }
+      }
+    },
+    "blood": {
+      "name": "Kan",
+      "identity": "Yürüdükçe kanama → yoğunluk → yırtılma.",
+      "abilities": {
+        "bleed": {
+          "name": "Kanama",
+          "desc": "Kanayan düşman yürüdüğü her karo için {per_tile} hasar alır ({dur} sn). İtiş de sayılır."
+        },
+        "intensity": {
+          "name": "Yoğunluk",
+          "desc": "Tekrar isabet yoğunluğu artırır (en çok {max_int}, her kat +%25)."
+        },
+        "rupture": {
+          "name": "Yırtılma",
+          "desc": "Yoğunluk tavana ulaşınca yırtılır: {rupture} kan hasarı, yoğunluk sıfırlanır."
+        }
+      }
+    },
+    "meteor": {
+      "name": "Meteor",
+      "identity": "Gökten meteor → alan darbesi → parçalar → meteor yağmuru.",
+      "abilities": {
+        "meteor_strike": {
+          "name": "Meteor çarpması",
+          "desc": "Her {period} sn hedefe gökten meteor düşer: {hit} çarpma hasarı."
+        },
+        "meteor_area": {
+          "name": "Alan darbesi",
+          "desc": "Çarpma {area_r} karo içindekilere %60 hasar verir."
+        },
+        "meteor_fragments": {
+          "name": "Çarpma parçaları",
+          "desc": "{frags} parça yakındakilere %50 taşır."
+        },
+        "meteor_shower": {
+          "name": "Meteor yağmuru",
+          "desc": "Ana meteorun çevresine {minis} küçük meteor düşer (%40)."
+        }
+      }
+    },
+    "volcano": {
+      "name": "Volkan",
+      "identity": "Yol kenarına çağrılan dağ kraterinden çevresine lav topları fışkırtır → sıçrama → geniş püskürme → lav birikintisi.",
+      "abilities": {
+        "lava_blob": {
+          "name": "Lav topu",
+          "desc": "Yol kenarına {life} sn'lik volkan çağırır; her {period} sn kraterden 1,5 karo içine lav topu fışkırır: {lava} lav hasarı."
+        },
+        "splash": {
+          "name": "Lav sıçraması",
+          "desc": "Top düştüğü yerde {splash_r} karo sıçrar (%60)."
+        },
+        "wide_eruption": {
+          "name": "Geniş püskürme",
+          "desc": "Her fışkırmada {blobs} top farklı hedeflere."
+        },
+        "lava_pool": {
+          "name": "Lav birikintisi",
+          "desc": "Top düştüğü yerde {pool_dur} sn lav birikintisi: {pool_dps}/sn."
+        }
+      }
+    },
+    "golem": {
+      "name": "Golem",
+      "identity": "Yürüyen dost birim → taş deri → zemin darbesi.",
+      "abilities": {
+        "golem_punch": {
+          "name": "Golem yumruğu",
+          "desc": "{life} sn'lik golem çağırır; en yakın düşmana yürür, saniyede bir {punch} fiziksel vurur."
+        },
+        "stone_skin": {
+          "name": "Taş deri",
+          "desc": "Golem %{armor_pct} az hasar alır."
+        },
+        "ground_slam": {
+          "name": "Zemin darbesi",
+          "desc": "Her {slam_every}. vuruş {slam_r} karo zemin darbesidir."
+        }
+      }
+    },
+    "hive": {
+      "name": "Kovan",
+      "identity": "Yuva ve böcekler → üreme → sürü odağı.",
+      "abilities": {
+        "beetle_bite": {
+          "name": "Böcek ısırığı",
+          "desc": "{life} sn'lik kovan kurar; en çok {beetles} böcek, ısırık başına {bite} hasar."
+        },
+        "brood": {
+          "name": "Üreme",
+          "desc": "Öldüren böcek yeni böcek doğurur (en çok +2)."
+        },
+        "swarm_focus": {
+          "name": "Sürü odağı",
+          "desc": "Böcekler işaretlenen tek hedefe birlikte saldırır."
+        }
+      }
+    },
+    "mana": {
+      "name": "Mana",
+      "identity": "Ekonomi rünü: verdiği hasarı manaya çevirir → işaretlediği düşmanın çevresindeki tüm hasarı manaya çevirir → işaretli düşman ölünce kristal (mana taşı).",
+      "abilities": {
+        "mana_siphon": {
+          "name": "Mana sifonu",
+          "desc": "{hit} mana hasarı; bu olaydaki hasarın %{siphon_pct}'i mana olur. Aşılandığı yetenekte ana rünün hasarını da manaya çevirir."
+        },
+        "mana_mark": {
+          "name": "Mana işareti",
+          "desc": "Vurulan düşman {mark_dur} sn işaretlenir: çevresindeki {mark_r} karo içinde hangi kuleden gelirse gelsin tüm hasarın %{mark_pct_pct}'i mana olur."
+        },
+        "crystallize": {
+          "name": "Kristalleşme",
+          "desc": "İşaretli düşman ölünce +{crystal} mana taşı düşer."
+        }
+      }
+    }
+  },
+  "carriers": {
+    "projectile_hit": "her isabette",
+    "impact_hit": "her çarpmada",
+    "entity_attack": "çağrının her vuruşunda",
+    "dot_tick": "her tikte",
+    "status_apply": "durum her uygulandığında",
+    "threshold": "eşik dolduğu an",
+    "retarget": "ulaşılan her yeni hedefte",
+    "impact_area": "alandaki her hedefte",
+    "field": "alanın içindekilere (her sn)",
+    "forced_move": "itildiğinde",
+    "movement": "yürüdüğü her karoda",
+    "death": "öldüğü an",
+    "spawn": "doğuşta (0,3 karo)",
+    "mark": "işaretlendiğinde",
+    "heal": "iyileşmeye çalıştığında",
+    "defense": "golem hasar aldığında"
+  },
+  "elements": {
+    "fire": "ateş",
+    "ice": "buz",
+    "electric": "elektrik",
+    "water": "su",
+    "physical": "fiziksel",
+    "light": "ışık",
+    "blood": "kan",
+    "impact": "çarpma",
+    "lava": "lav",
+    "poison": "zehir",
+    "arcane": "mana"
+  },
+  "statuses": {
+    "burn": "yanma",
+    "slow": "yavaşlatma",
+    "cold": "soğuk",
+    "frozen": "donma",
+    "charge": "elektrik yükü",
+    "static": "statik",
+    "stun": "sersemleme",
+    "poison": "zehir",
+    "wet": "ıslaklık",
+    "shred": "zırh aşınması",
+    "blind": "kamaşma",
+    "lit": "aydınlatılmış",
+    "bleed": "kanama",
+    "ramp": "kızışma",
+    "mana_mark": "mana işareti"
+  },
+  "families": {
+    "Damage": "hasar",
+    "ApplyStatus": "durum",
+    "ForceMove": "itiş",
+    "ChainTransfer": "sekme",
+    "Pierce": "delme",
+    "Fork": "kırılma",
+    "AreaImpact": "alan darbesi",
+    "SpawnFragments": "parça",
+    "MultiImpact": "küçük meteorlar",
+    "CreateGroundField": "yer alanı",
+    "EveryNth": "her N. atış",
+    "ModifyIncomingDamage": "zırh",
+    "SummonVolcano": "volkan çağrısı",
+    "SummonGolem": "golem çağrısı",
+    "SummonHive": "kovan çağrısı",
+    "MeteorCall": "meteor çağrısı",
+    "ManaSiphon": "mana sifonu"
+  },
+  "never_exported": {
+    "SummonVolcano": "Çağırma aşıyla taşınmaz; volkan yalnızca ana rün Volkan iken çağrılır (v4 §17.2).",
+    "SummonGolem": "Çağırma aşıyla taşınmaz (v4 §17.2).",
+    "SummonHive": "Çağırma aşıyla taşınmaz (v4 §17.2).",
+    "MeteorCall": "Gökten meteor çağrısı aşıyla taşınmaz; yalnızca çarpma hasarı taşınır."
+  },
+  "verbs": {
+    "carrier.projectile_hit": "mermi sekerek",
+    "carrier.impact_hit": "çarpma",
+    "carrier.entity_attack": "vuruş sekerek",
+    "carrier.dot_tick": "durum yandakine atlayarak",
+    "carrier.status_apply": "durum yandakine geçerek",
+    "carrier.threshold": "etki yandakine geçerek",
+    "carrier.retarget": "parça sekerek",
+    "carrier.impact_area": "alan",
+    "carrier.field": "alan etkisi yandakine atlayarak",
+    "carrier.forced_move": "itiş",
+    "carrier.movement": "hareket",
+    "carrier.death": "ölüm etkisi yandakine geçerek",
+    "carrier.spawn": "doğuş",
+    "carrier.mark": "işaret",
+    "carrier.heal": "iyileşme",
+    "carrier.defense": "savunma",
+    "ability.volcano.lava_blob": "lav topu düşmandan düşmana zıplayarak",
+    "ability.volcano.wide_eruption": "ek toplar düşmandan düşmana zıplayarak",
+    "ability.golem.golem_punch": "yumruk şok dalgası yandakine geçerek",
+    "ability.hive.beetle_bite": "ısırık yandakine sıçrayarak",
+    "default": "seker"
+  },
+  "templates": {
+    "spec_load": "Cannot load rune mechanics: {path}",
+    "error": "{code}: {message}",
+    "parse_unparsable": "unparsable recipe: {text}",
+    "parse_trailing": "trailing tokens in {text}",
+    "parse_expected": "expected {expect} at token {pos} in {text}",
+    "parse_node": "expected rune+grade, got {token}",
+    "unknown_ability": "{rune} has no ability {ability}",
+    "locked_receiver": "{rune} G{grade}: '{ability}' {unlock} açılır",
+    "compile_locked": "✗ {rune} G{grade}: '{ability}' yok ({rune} {unlock} açılır)",
+    "incompatible": "{family} '{carrier}' taşıyıcısında anlamsız (uyumsuz)",
+    "rune_grade": "{rune} G{grade}",
+    "graft_unknown": "unknown_ability: {ability}",
+    "graft_locked": "locked_on_receiver: '{ability}' {rune} {unlock} açılır",
+    "graft_reason": "{prefix}{reason}",
+    "incompatible_word": "uyumsuz",
+    "incompatible_prefix": "uyumsuz: ",
+    "grade_late": "G{grade}'te",
+    "grade_early": "G{grade}'de",
+    "op_damage": "{amount} {element} hasarı",
+    "op_burn": "yanma {dps}/sn × {dur} sn",
+    "op_trail": ", arkasında ateş izi {dps}/sn ({dur} sn)",
+    "op_slow": "%{pct} yavaşlatma ({dur} sn)",
+    "op_cold": "{threshold} soğukta {freeze} sn donma",
+    "op_shards": ", donmuş ölümde {shards} parça × {damage}",
+    "op_nova": ", donunca {radius} karo çevre de donar",
+    "op_charge": "{max} yükte boşalma +{burst} elektrik, {stun} sn şok",
+    "op_poison": "zehir {dps}/sn × {dur} sn",
+    "op_stacks": ", {stacks} yığına kadar",
+    "op_heal_supp": ", iyileşme −%{pct}",
+    "op_contagion": ", ölünce %{pct} bulaşma",
+    "op_wet": "ıslaklık {dur} sn",
+    "op_shred": "zırh −%{pct} ({dur} sn)",
+    "op_blind": "kamaşma {dur} sn",
+    "op_lit": "aydınlatma: +%{pct} alınan hasar ({dur} sn)",
+    "op_mana_mark": "mana işareti {dur} sn: {radius} karo çevresindeki hasarın %{pct}'i mana",
+    "op_crystal": ", ölünce +{count} mana taşı",
+    "op_stun": "{dur} sn sersemletme",
+    "op_bleed": "kanama {damage}/karo ({dur} sn)",
+    "op_intensity": ", yoğunluk {max} kata kadar",
+    "op_rupture": ", tavanda yırtılma {damage}",
+    "op_push": "{distance} karo geri itiş",
+    "op_siphon": "bu olaydaki hasarın %{pct}'i mana",
+    "op_chain": "{verb}: {hops} hedef (her sekmede ×{power})",
+    "op_pierce": "{count} hedef delme (×{power})",
+    "op_area": "{radius} karo alan (%{pct})",
+    "op_fragments": "{count} parça (%{pct})",
+    "op_meteors": "{count} küçük meteor (%{pct})",
+    "lava_pool": "lav birikintisi",
+    "op_field": "{kind} {dur} sn ({effects}/sn)",
+    "op_armor": "golem %{pct} az hasar alır",
+    "title_grafts": "  · {count} aşı, derinlik {depth}",
+    "ability_locked": "  🔒 {ability} ({unlock} açılır)",
+    "ability_line": "• {ability}: {desc}",
+    "no_contribution": "katkı yok",
+    "kid_line": "{indent}↳ {rune} G{grade} — {carrier}: {body}",
+    "rejected_line": "{indent}    ✗ {family} taşınmadı: {reason}",
+    "nested_heading": "{indent}    [{rune} · {ability}]",
+    "cost_note": "Rünler mana ile alınır ve birleştirilir; kuleler mana taşıyla kurulur.",
+    "locale_load": "Cannot load rune locale: {path}",
+    "locale_invalid": "Invalid rune locale: {path}"
+  },
+  "status_ops": {
+    "frozen": "frozen",
+    "static": "static",
+    "ramp": "ramp"
+  },
+  "family_ops": {
+    "Fork": "Fork",
+    "EveryNth": "EveryNth",
+    "SummonVolcano": "SummonVolcano",
+    "SummonGolem": "SummonGolem",
+    "SummonHive": "SummonHive",
+    "MeteorCall": "MeteorCall"
+  }
+}

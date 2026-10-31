@@ -1,0 +1,19 @@
+; RuneCraft MVP — standalone Claude prototype (asset-work/claude-tileset/mvp). Not the shared game project.
+config_version=5
+
+[application]
+config/name="RuneCraft MVP"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+
+[display]
+window/size/viewport_width=1920
+window/size/viewport_height=1080
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+anti_aliasing/quality/msaa_3d=2
+environment/defaults/default_clear_color=Color(0.12, 0.16, 0.13, 1)

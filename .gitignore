@@ -1,0 +1,22 @@
+# Godot 4 generated editor/import cache
+/.godot/
+/export_presets.cfg
+
+# Runtime captures and local worker prompts
+/captures/
+/codex_tasks/
+
+# Python caches and logs
+__pycache__/
+*.py[cod]
+*.log
+
+# Operating-system junk
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
+
+# Keep .gdignore files: assets and fonts are loaded directly at runtime.
+# No *.import exclusion: Godot 4 caches live in .godot/; importer
+# configuration sidecars should remain versioned if introduced later.

@@ -1,0 +1,443 @@
+{
+  "locale_id": "en",
+  "decimal": ".",
+  "runes": {
+    "fire": {
+      "name": "Fire",
+      "identity": "Direct heat → burn → a fire trail behind burning enemies.",
+      "abilities": {
+        "fire_hit": {
+          "name": "Fire Hit",
+          "desc": "Projectile dealing {hit} fire damage."
+        },
+        "burn": {
+          "name": "Burn",
+          "desc": "Hits burn: {burn_dps}/s × {burn_dur} s."
+        },
+        "fire_trail": {
+          "name": "Fire Trail",
+          "desc": "Burning enemies leave a trail lasting {trail_dur} s; enemies in it take {trail_dps} fire damage/s."
+        }
+      }
+    },
+    "ice": {
+      "name": "Ice",
+      "identity": "Ice hit → slow → freeze → shards on frozen death → frost nova.",
+      "abilities": {
+        "ice_hit": {
+          "name": "Ice Hit",
+          "desc": "{hit} ice damage."
+        },
+        "chill": {
+          "name": "Chill",
+          "desc": "Slows by {slow_pct}% for {slow_dur} s."
+        },
+        "freeze": {
+          "name": "Freeze",
+          "desc": "Every hit adds 1 cold; at {cold_threshold} cold it freezes for {freeze} s."
+        },
+        "ice_shards": {
+          "name": "Ice Shards",
+          "desc": "Enemies killed while frozen split into {shards} shards, dealing {shard_dmg} ice damage to nearby enemies."
+        },
+        "frost_nova": {
+          "name": "Frost Nova",
+          "desc": "When an enemy freezes, enemies within {nova_r} tiles also freeze for half the duration."
+        }
+      }
+    },
+    "electric": {
+      "name": "Electric",
+      "identity": "Electric hit → bounce → overload (discharge + shock).",
+      "abilities": {
+        "electric_hit": {
+          "name": "Electric Hit",
+          "desc": "{hit} electric damage."
+        },
+        "chain": {
+          "name": "Bounce",
+          "desc": "Bounces to {chain} nearby targets (power ×{chain_power} per bounce)."
+        },
+        "overload": {
+          "name": "Overload",
+          "desc": "Each electric hit adds 1 charge; at {charge_max} charges: +{discharge} electric damage and {shock} s shock."
+        }
+      }
+    },
+    "poison": {
+      "name": "Poison",
+      "identity": "Poison damage over time → stacks → healing suppression → spread on death. No explosions or ground fields (v4).",
+      "abilities": {
+        "poison_tick": {
+          "name": "Poison Tick",
+          "desc": "Hits poison: {dps}/s × {dur} s."
+        },
+        "toxic_stack": {
+          "name": "Toxic Stacks",
+          "desc": "Poison stacks up to {max_stacks} times (+50% per stack)."
+        },
+        "heal_suppression": {
+          "name": "Healing Suppression",
+          "desc": "Poisoned enemies receive {heal_supp_pct}% less healing."
+        },
+        "contagion": {
+          "name": "Contagion",
+          "desc": "On poisoned death, {contagion_pct}% of stacks spread to the nearest enemy (no explosion)."
+        }
+      }
+    },
+    "water": {
+      "name": "Water",
+      "identity": "Water hit → wet → push → wave.",
+      "abilities": {
+        "water_hit": {
+          "name": "Water Hit",
+          "desc": "{hit} water damage."
+        },
+        "wet": {
+          "name": "Soak",
+          "desc": "Wets for {wet_dur} s (wet: ×1.5 electric damage, freezes sooner, shorter burns)."
+        },
+        "push": {
+          "name": "Push",
+          "desc": "Pushes the target back {push} tiles along the path (×1.5 against burning targets)."
+        },
+        "wave": {
+          "name": "Wave",
+          "desc": "Water hits become waves: 25% damage, wet and push within {wave_r} tiles."
+        }
+      }
+    },
+    "stone": {
+      "name": "Stone",
+      "identity": "Heavy hit → armor shred → fragments → concussion.",
+      "abilities": {
+        "stone_hit": {
+          "name": "Heavy Hit",
+          "desc": "{hit} physical damage."
+        },
+        "armor_shred": {
+          "name": "Armor Shred",
+          "desc": "Reduces armor by {shred_pct}% for 3 s."
+        },
+        "fragments": {
+          "name": "Stone Fragments",
+          "desc": "On impact, {frags} fragments carry 50% of the hit to nearby enemies."
+        },
+        "concussion": {
+          "name": "Concussion",
+          "desc": "Hits stun for {stun} s (once per target every 2 s)."
+        }
+      }
+    },
+    "light": {
+      "name": "Light",
+      "identity": "Beam → blind → pierce → illumination mark.",
+      "abilities": {
+        "light_beam": {
+          "name": "Beam",
+          "desc": "Beam dealing {hit} light damage."
+        },
+        "dazzle": {
+          "name": "Dazzle",
+          "desc": "Blinds for {blind_dur} s: enemy attack accuracy drops by 30%."
+        },
+        "pierce": {
+          "name": "Pierce",
+          "desc": "Pierces extra targets: {pierce} (×0.6 per pierce)."
+        },
+        "illuminate": {
+          "name": "Illuminate",
+          "desc": "Hits illuminate for 3 s: targets take +{lit_pct}% damage from all towers."
+        }
+      }
+    },
+    "blood": {
+      "name": "Blood",
+      "identity": "Bleed while moving → intensity → rupture.",
+      "abilities": {
+        "bleed": {
+          "name": "Bleed",
+          "desc": "Bleeding enemies take {per_tile} damage per tile moved for {dur} s. Pushes count too."
+        },
+        "intensity": {
+          "name": "Intensity",
+          "desc": "Repeated hits increase intensity (up to {max_int}, +25% per level)."
+        },
+        "rupture": {
+          "name": "Rupture",
+          "desc": "At maximum intensity: {rupture} blood damage, then intensity resets."
+        }
+      }
+    },
+    "meteor": {
+      "name": "Meteor",
+      "identity": "Falling meteor → area impact → fragments → meteor shower.",
+      "abilities": {
+        "meteor_strike": {
+          "name": "Meteor Strike",
+          "desc": "A meteor falls on the target every {period} s: {hit} impact damage."
+        },
+        "meteor_area": {
+          "name": "Area Impact",
+          "desc": "Impacts deal 60% damage within {area_r} tiles."
+        },
+        "meteor_fragments": {
+          "name": "Impact Fragments",
+          "desc": "{frags} fragments carry 50% damage to nearby enemies."
+        },
+        "meteor_shower": {
+          "name": "Meteor Shower",
+          "desc": "{minis} small meteors land around the main impact (40%)."
+        }
+      }
+    },
+    "volcano": {
+      "name": "Volcano",
+      "identity": "Summons a roadside volcano that spits lava blobs → splash → wide eruption → lava pool.",
+      "abilities": {
+        "lava_blob": {
+          "name": "Lava Blob",
+          "desc": "Summons a volcano for {life} s; every {period} s it spits a lava blob within 1.5 tiles: {lava} lava damage."
+        },
+        "splash": {
+          "name": "Lava Splash",
+          "desc": "Blobs splash within {splash_r} tiles on impact (60%)."
+        },
+        "wide_eruption": {
+          "name": "Wide Eruption",
+          "desc": "Each eruption sends {blobs} blobs at different targets."
+        },
+        "lava_pool": {
+          "name": "Lava Pool",
+          "desc": "Blobs leave a lava pool lasting {pool_dur} s: {pool_dps}/s."
+        }
+      }
+    },
+    "golem": {
+      "name": "Golem",
+      "identity": "Walking ally → stone skin → ground slam.",
+      "abilities": {
+        "golem_punch": {
+          "name": "Golem Punch",
+          "desc": "Summons a golem for {life} s; it walks to the nearest enemy and deals {punch} physical damage every second."
+        },
+        "stone_skin": {
+          "name": "Stone Skin",
+          "desc": "Golems take {armor_pct}% less damage."
+        },
+        "ground_slam": {
+          "name": "Ground Slam",
+          "desc": "Every {slam_every} hits, slams the ground within {slam_r} tiles."
+        }
+      }
+    },
+    "hive": {
+      "name": "Hive",
+      "identity": "Hive and beetles → brood → swarm focus.",
+      "abilities": {
+        "beetle_bite": {
+          "name": "Beetle Bite",
+          "desc": "Creates a hive for {life} s; up to {beetles} beetles, {bite} damage per bite."
+        },
+        "brood": {
+          "name": "Brood",
+          "desc": "Beetles that kill spawn another beetle (up to +2)."
+        },
+        "swarm_focus": {
+          "name": "Swarm Focus",
+          "desc": "Beetles attack a single marked target together."
+        }
+      }
+    },
+    "mana": {
+      "name": "Mana",
+      "identity": "Economy rune: converts its damage into mana → converts all damage around a marked enemy into mana → drops crystals (mana stones) on marked death.",
+      "abilities": {
+        "mana_siphon": {
+          "name": "Mana Siphon",
+          "desc": "{hit} mana damage; {siphon_pct}% of damage in this event becomes mana. When grafted, also converts the base rune's damage on that ability."
+        },
+        "mana_mark": {
+          "name": "Mana Mark",
+          "desc": "Hits mark for {mark_dur} s: {mark_pct_pct}% of all damage from any tower in a {mark_r}-tile radius becomes mana."
+        },
+        "crystallize": {
+          "name": "Crystallize",
+          "desc": "Marked enemies drop +{crystal} mana stones on death."
+        }
+      }
+    }
+  },
+  "carriers": {
+    "projectile_hit": "on every hit",
+    "impact_hit": "on every impact",
+    "entity_attack": "on each summon attack",
+    "dot_tick": "on every tick",
+    "status_apply": "on status application",
+    "threshold": "at threshold",
+    "retarget": "on each new target",
+    "impact_area": "on each target in the area",
+    "field": "inside the field (every second)",
+    "forced_move": "when pushed",
+    "movement": "per tile moved",
+    "death": "on death",
+    "spawn": "on spawn (0.3 tiles)",
+    "mark": "when marked",
+    "heal": "on attempted healing",
+    "defense": "when the golem takes damage"
+  },
+  "elements": {
+    "fire": "fire",
+    "ice": "ice",
+    "electric": "electric",
+    "water": "water",
+    "physical": "physical",
+    "light": "light",
+    "blood": "blood",
+    "impact": "impact",
+    "lava": "lava",
+    "poison": "poison",
+    "arcane": "mana"
+  },
+  "statuses": {
+    "burn": "burn",
+    "slow": "slow",
+    "cold": "cold",
+    "frozen": "freeze",
+    "charge": "charge",
+    "static": "static",
+    "stun": "stun",
+    "poison": "poison",
+    "wet": "wet",
+    "shred": "armor shred",
+    "blind": "blind",
+    "lit": "illuminated",
+    "bleed": "bleed",
+    "ramp": "frenzy",
+    "mana_mark": "mana mark"
+  },
+  "families": {
+    "Damage": "Damage",
+    "ApplyStatus": "Status",
+    "ForceMove": "Push",
+    "ChainTransfer": "Bounce",
+    "Pierce": "Pierce",
+    "Fork": "Split",
+    "AreaImpact": "Area Impact",
+    "SpawnFragments": "Fragments",
+    "MultiImpact": "Small Meteors",
+    "CreateGroundField": "Ground Field",
+    "EveryNth": "Every Nth Shot",
+    "ModifyIncomingDamage": "Armor",
+    "SummonVolcano": "Volcano Summon",
+    "SummonGolem": "Golem Summon",
+    "SummonHive": "Hive Summon",
+    "MeteorCall": "Meteor Call",
+    "ManaSiphon": "Mana Siphon"
+  },
+  "never_exported": {
+    "SummonVolcano": "Summons cannot be grafted; a volcano is summoned only when Volcano is the base rune (v4 §17.2).",
+    "SummonGolem": "Summons cannot be grafted (v4 §17.2).",
+    "SummonHive": "Summons cannot be grafted (v4 §17.2).",
+    "MeteorCall": "Meteor calls cannot be grafted; only impact damage is carried."
+  },
+  "verbs": {
+    "carrier.projectile_hit": "projectile bounces",
+    "carrier.impact_hit": "impact",
+    "carrier.entity_attack": "attack bounces",
+    "carrier.dot_tick": "status jumps to a neighbor",
+    "carrier.status_apply": "status transfers to a neighbor",
+    "carrier.threshold": "effect transfers to a neighbor",
+    "carrier.retarget": "fragment bounces",
+    "carrier.impact_area": "area",
+    "carrier.field": "field effect jumps to a neighbor",
+    "carrier.forced_move": "push",
+    "carrier.movement": "movement",
+    "carrier.death": "death effect transfers to a neighbor",
+    "carrier.spawn": "spawn",
+    "carrier.mark": "mark",
+    "carrier.heal": "healing",
+    "carrier.defense": "defense",
+    "ability.volcano.lava_blob": "lava blob hops between enemies",
+    "ability.volcano.wide_eruption": "extra blobs hop between enemies",
+    "ability.golem.golem_punch": "punch shockwave transfers to a neighbor",
+    "ability.hive.beetle_bite": "bite jumps to a neighbor",
+    "default": "bounces"
+  },
+  "templates": {
+    "spec_load": "Cannot load rune mechanics: {path}",
+    "error": "{code}: {message}",
+    "parse_unparsable": "unparsable recipe: {text}",
+    "parse_trailing": "trailing tokens in {text}",
+    "parse_expected": "expected {expect} at token {pos} in {text}",
+    "parse_node": "expected rune+grade, got {token}",
+    "unknown_ability": "{rune} has no ability {ability}",
+    "locked_receiver": "{rune} G{grade}: '{ability}' unlocks {unlock}",
+    "compile_locked": "✗ {rune} G{grade}: '{ability}' unavailable ({rune} unlocks it {unlock})",
+    "incompatible": "{family} is incompatible with '{carrier}'",
+    "rune_grade": "{rune} G{grade}",
+    "graft_unknown": "unknown_ability: {ability}",
+    "graft_locked": "locked_on_receiver: '{ability}' on {rune} unlocks {unlock}",
+    "graft_reason": "{prefix}{reason}",
+    "incompatible_word": "incompatible",
+    "incompatible_prefix": "incompatible: ",
+    "grade_late": "at G{grade}",
+    "grade_early": "at G{grade}",
+    "op_damage": "{amount} {element} damage",
+    "op_burn": "burn {dps}/s × {dur} s",
+    "op_trail": ", leaves a fire trail {dps}/s ({dur} s)",
+    "op_slow": "{pct}% slow ({dur} s)",
+    "op_cold": "freeze for {freeze} s at {threshold} cold",
+    "op_shards": ", on frozen death: {shards} shards × {damage}",
+    "op_nova": ", on freeze: also freezes enemies within {radius} tiles",
+    "op_charge": "at {max} charges: +{burst} electric damage, {stun} s shock",
+    "op_poison": "poison {dps}/s × {dur} s",
+    "op_stacks": ", up to {stacks} stacks",
+    "op_heal_supp": ", healing −{pct}%",
+    "op_contagion": ", spreads {pct}% on death",
+    "op_wet": "wet for {dur} s",
+    "op_shred": "armor −{pct}% ({dur} s)",
+    "op_blind": "blind for {dur} s",
+    "op_lit": "illuminated: +{pct}% damage taken ({dur} s)",
+    "op_mana_mark": "mana mark for {dur} s: {pct}% of damage in a {radius}-tile radius becomes mana",
+    "op_crystal": ", +{count} mana stones on death",
+    "op_stun": "stun for {dur} s",
+    "op_bleed": "bleed {damage}/tile ({dur} s)",
+    "op_intensity": ", up to {max} intensity",
+    "op_rupture": ", at maximum intensity: rupture {damage}",
+    "op_push": "push back {distance} tiles",
+    "op_siphon": "{pct}% of damage in this event becomes mana",
+    "op_chain": "{verb}: targets hit {hops} (×{power} per bounce)",
+    "op_pierce": "pierce: {count} (×{power})",
+    "op_area": "{radius}-tile area ({pct}%)",
+    "op_fragments": "{count} fragments ({pct}%)",
+    "op_meteors": "{count} small meteors ({pct}%)",
+    "lava_pool": "lava pool",
+    "op_field": "{kind} for {dur} s ({effects}/s)",
+    "op_armor": "golem takes {pct}% less damage",
+    "title_grafts": "  · {count} grafts, depth {depth}",
+    "ability_locked": "  🔒 {ability} (unlocks {unlock})",
+    "ability_line": "• {ability}: {desc}",
+    "no_contribution": "no contribution",
+    "kid_line": "{indent}↳ {rune} G{grade} — {carrier}: {body}",
+    "rejected_line": "{indent}    ✗ {family} not carried: {reason}",
+    "nested_heading": "{indent}    [{rune} · {ability}]",
+    "cost_note": "Runes are bought and combined with mana; towers are built with mana stones.",
+    "locale_load": "Cannot load rune locale: {path}",
+    "locale_invalid": "Invalid rune locale: {path}"
+  },
+  "status_ops": {
+    "frozen": "freeze",
+    "static": "static",
+    "ramp": "frenzy"
+  },
+  "family_ops": {
+    "Fork": "Split",
+    "EveryNth": "Every Nth Shot",
+    "SummonVolcano": "Volcano Summon",
+    "SummonGolem": "Golem Summon",
+    "SummonHive": "Hive Summon",
+    "MeteorCall": "Meteor Call"
+  }
+}

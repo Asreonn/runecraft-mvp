@@ -1,0 +1,1986 @@
+{
+ "schema": "runecraft.rune_mechanics",
+ "version": 1,
+ "date": "2026-10-30",
+ "status": "design proposal; numbers are prototype assumptions, not balance",
+ "sources": {
+  "v4": "design/source_package/RuneCraft_Rune_Ability_Function_Plan_MVP_v4.md",
+  "user": "user decisions 2026-10-30 (override v4): one distinct unlock per grade; Fire G1 hit / G2 burn / G3 trail; volcano = summon spouting lava blobs, Electric makes blobs hop; combine 2 runes = grade up; runes cost mana, towers cost mana stone; graft removal returns contents, fee burns; extra status interactions allowed; no craft preview; abilities per rune = natural count (min 2 besides hit), unlock spread over grades, unlock fast; balance to be set; Mana rune: grafting it earns mana (damage -> mana, later a mark that turns all damage around the marked enemy into mana); mana stones are collected as enemies die",
+  "proposal": "Claude's choices where the user left room: unlock grades, extra abilities marked proposal, numbers, interactions marked proposal"
+ },
+ "principles": [
+  "Each rune has its natural abilities only (hit + at least 2 more, more where the theme gives more, e.g. Ice). Abilities unlock between G1 and G5, mostly by G2-G4; grades without a new ability are stat growth. Each ability is one graft slot.",
+  "Every ability produces an event; a graft subscribes to that event and applies the donor's open abilities there.",
+  "A donor contributes only abilities open at its own grade. Its vehicle (projectile / summon) never travels; only effects do.",
+  "Grafts on load/stack abilities fire when the load's effect happens (tick, threshold, discharge), never when a stack is merely added.",
+  "Chain/hop takes the shape of the host carrier: projectile bounces, lava blob hops, flame leaps, fragment re-aims.",
+  "Siblings are order-independent: payloads merge first, then propagators carry the merged payload; sibling propagators never trigger each other.",
+  "No pair-specific code. A 13th rune is a JSON entry.",
+  "Propagation power (chain/area/fragment falloff) scales Damage and ForceMove distance; statuses are carried unchanged."
+ ],
+ "reference": {
+  "attack_period_s": 1.5,
+  "tick_s": 1.0,
+  "field_tick_s": 1.0,
+  "tower_range_tiles": 4.0,
+  "tower_offset_from_path_tiles": 2.0,
+  "wave": {
+   "count": 6,
+   "hp": 120,
+   "speed_tiles_s": 1.0,
+   "spacing_tiles": 0.6,
+   "armor_pct": 0.1
+  },
+  "sim_seconds": 14.0,
+  "dt": 0.05,
+  "attack_period_note": "attack_period_s is the default; a rune may override with attack_s (Taş 2.2 heavy, Işık 1.2, Elektrik 1.3)."
+ },
+ "coefficients": {
+  "depth_damage": 0.7,
+  "depth_control": 0.85,
+  "sibling_same_damage": [
+   1.0,
+   0.5,
+   0.25,
+   0.125
+  ],
+  "damage_params": [
+   "amount",
+   "dps",
+   "per_tile",
+   "shard_dmg",
+   "burst",
+   "arc",
+   "rupture",
+   "trail_dps",
+   "field_dps",
+   "boulder_dmg",
+   "power",
+   "frac",
+   "siphon",
+   "mark_pct"
+  ],
+  "control_params": [
+   "pct",
+   "dist",
+   "pull",
+   "field_slow",
+   "paralysis"
+  ],
+  "note": "Durations, counts, radii are never scaled. Event coefficient (per carrier) multiplies only instant Damage of grafted contributions. Grafted propagators also carry the host payload with depth-scaled power/frac (a chain grafted at depth 1 carries ×0.7 of its own falloff)."
+ },
+ "budgets": {
+  "applications_per_root_event": 16,
+  "max_generation": 2,
+  "chain_range_tiles": 1.5,
+  "fields_per_tower": 8,
+  "extra_beetles_from_brood": 2,
+  "note": "Hidden from the player (v4 §19). A propagated event carries generation+1; propagators stop at max_generation.",
+  "field_stacking": "Overlapping fields of the same kind from the same tower do not stack: an enemy is hit by at most one of them per field tick.",
+  "status_spread_once": "A status instance (burn/poison) propagates only on its first tick; later ticks still deal damage and pay graft payload but do not chain again (v4 §19 'status tick -> new status tick')."
+ },
+ "interactions": [
+  {
+   "id": "wet_conducts",
+   "if_target": "wet",
+   "on": "Damage:electric",
+   "effect": {
+    "damage_mult": 1.5,
+    "chain_range_mult": 1.5,
+    "chain_prefers": "wet"
+   },
+   "source": "user-allowed",
+   "tr": "Islak hedef elektrikten ×1,5 hasar alır; sekme ıslak hedefleri önce seçer ve menzili ×1,5 olur."
+  },
+  {
+   "id": "wet_freezes_faster",
+   "if_target": "wet",
+   "on": "ApplyStatus:cold",
+   "effect": {
+    "threshold_minus": 1
+   },
+   "source": "user-allowed",
+   "tr": "Islak hedef bir eksik soğukla donar."
+  },
+  {
+   "id": "wet_douses_burn",
+   "if_target": "wet",
+   "on": "ApplyStatus:burn",
+   "effect": {
+    "duration_mult": 0.5,
+    "remove_status": "wet"
+   },
+   "source": "user-allowed",
+   "tr": "Islak hedefte yanma yarı süre sürer ve ıslaklık kurur."
+  },
+  {
+   "id": "burning_push",
+   "if_target": "burn",
+   "on": "ForceMove",
+   "effect": {
+    "dist_mult": 1.5
+   },
+   "source": "v4",
+   "tr": "Yanan hedef ×1,5 itilir (v4 Su G4 kuralı, artık genel etkileşim)."
+  },
+  {
+   "id": "forced_bleed",
+   "if_target": "bleed",
+   "on": "ForceMove",
+   "effect": {
+    "counts_as_movement": true
+   },
+   "source": "v4",
+   "tr": "Zorla hareket (itiş, çekiş) kanama mesafesine sayılır; ışınlanma sayılmaz."
+  },
+  {
+   "id": "frozen_pushed_short",
+   "if_target": "frozen",
+   "on": "ForceMove",
+   "effect": {
+    "dist_mult": 0.5
+   },
+   "source": "proposal",
+   "tr": "Donmuş hedef yarı mesafe itilir."
+  }
+ ],
+ "carriers": {
+  "projectile_hit": {
+   "tr": "her isabette",
+   "coef": 1.0,
+   "allows": [
+    "Damage",
+    "ApplyStatus",
+    "ForceMove",
+    "ChainTransfer",
+    "Pierce",
+    "Fork",
+    "AreaImpact",
+    "SpawnFragments",
+    "MultiImpact",
+    "CreateGroundField",
+    "EveryNth",
+    "ManaSiphon"
+   ],
+   "chain_verb": "mermi sekerek"
+  },
+  "impact_hit": {
+   "tr": "her çarpmada",
+   "coef": 1.0,
+   "allows": [
+    "Damage",
+    "ApplyStatus",
+    "ForceMove",
+    "AreaImpact",
+    "SpawnFragments",
+    "CreateGroundField",
+    "ManaSiphon"
+   ],
+   "chain_verb": "çarpma"
+  },
+  "entity_attack": {
+   "tr": "çağrının her vuruşunda",
+   "coef": 1.0,
+   "allows": [
+    "Damage",
+    "ApplyStatus",
+    "ForceMove",
+    "ChainTransfer",
+    "Pierce",
+    "Fork",
+    "AreaImpact",
+    "SpawnFragments",
+    "CreateGroundField",
+    "EveryNth",
+    "ManaSiphon"
+   ],
+   "chain_verb": "vuruş sekerek"
+  },
+  "dot_tick": {
+   "tr": "her tikte",
+   "coef": 0.35,
+   "allows": [
+    "Damage",
+    "ApplyStatus",
+    "ChainTransfer",
+    "ManaSiphon"
+   ],
+   "chain_verb": "durum yandakine atlayarak"
+  },
+  "status_apply": {
+   "tr": "durum her uygulandığında",
+   "coef": 0.5,
+   "allows": [
+    "Damage",
+    "ApplyStatus",
+    "ChainTransfer",
+    "ManaSiphon"
+   ],
+   "chain_verb": "durum yandakine geçerek"
+  },
+  "threshold": {
+   "tr": "eşik dolduğu an",
+   "coef": 1.0,
+   "allows": [
+    "Damage",
+    "ApplyStatus",
+    "ChainTransfer",
+    "AreaImpact",
+    "ForceMove",
+    "ManaSiphon"
+   ],
+   "chain_verb": "etki yandakine geçerek",
+   "note": "Rare event (freeze, discharge, max stacks): full coefficient."
+  },
+  "retarget": {
+   "tr": "ulaşılan her yeni hedefte",
+   "coef": 0.6,
+   "allows": [
+    "Damage",
+    "ApplyStatus",
+    "ForceMove",
+    "ChainTransfer",
+    "ManaSiphon"
+   ],
+   "chain_verb": "parça sekerek"
+  },
+  "impact_area": {
+   "tr": "alandaki her hedefte",
+   "coef": 0.6,
+   "allows": [
+    "Damage",
+    "ApplyStatus",
+    "ForceMove",
+    "SpawnFragments",
+    "ManaSiphon"
+   ],
+   "chain_verb": "alan"
+  },
+  "field": {
+   "tr": "alanın içindekilere (her sn)",
+   "coef": 0.2,
+   "allows": [
+    "Damage",
+    "ApplyStatus",
+    "ChainTransfer",
+    "ManaSiphon"
+   ],
+   "chain_verb": "alan etkisi yandakine atlayarak"
+  },
+  "forced_move": {
+   "tr": "itildiğinde",
+   "coef": 1.0,
+   "allows": [
+    "Damage",
+    "ApplyStatus",
+    "ManaSiphon"
+   ],
+   "chain_verb": "itiş"
+  },
+  "movement": {
+   "tr": "yürüdüğü her karoda",
+   "coef": 0.4,
+   "allows": [
+    "Damage",
+    "ApplyStatus",
+    "ManaSiphon"
+   ],
+   "chain_verb": "hareket"
+  },
+  "death": {
+   "tr": "öldüğü an",
+   "coef": 1.0,
+   "allows": [
+    "Damage",
+    "ApplyStatus",
+    "ChainTransfer",
+    "AreaImpact",
+    "SpawnFragments",
+    "ManaSiphon"
+   ],
+   "chain_verb": "ölüm etkisi yandakine geçerek"
+  },
+  "spawn": {
+   "tr": "doğuşta (0,3 karo)",
+   "coef": 1.0,
+   "allows": [
+    "Damage",
+    "ApplyStatus",
+    "ForceMove",
+    "ManaSiphon"
+   ],
+   "chain_verb": "doğuş"
+  },
+  "mark": {
+   "tr": "işaretlendiğinde",
+   "coef": 1.0,
+   "allows": [
+    "Damage",
+    "ApplyStatus",
+    "ManaSiphon"
+   ],
+   "chain_verb": "işaret"
+  },
+  "heal": {
+   "tr": "iyileşmeye çalıştığında",
+   "coef": 0.5,
+   "allows": [
+    "Damage",
+    "ApplyStatus",
+    "ManaSiphon"
+   ],
+   "chain_verb": "iyileşme"
+  },
+  "defense": {
+   "tr": "golem hasar aldığında",
+   "coef": 0.0,
+   "allows": [
+    "ModifyIncomingDamage"
+   ],
+   "chain_verb": "savunma"
+  }
+ },
+ "never_exported": {
+  "SummonVolcano": "Çağırma aşıyla taşınmaz; volkan yalnızca ana rün Volkan iken çağrılır (v4 §17.2).",
+  "SummonGolem": "Çağırma aşıyla taşınmaz (v4 §17.2).",
+  "SummonHive": "Çağırma aşıyla taşınmaz (v4 §17.2).",
+  "MeteorCall": "Gökten meteor çağrısı aşıyla taşınmaz; yalnızca çarpma hasarı taşınır."
+ },
+ "family_tr": {
+  "Damage": "hasar",
+  "ApplyStatus": "durum",
+  "ForceMove": "itiş",
+  "ChainTransfer": "sekme",
+  "Pierce": "delme",
+  "Fork": "kırılma",
+  "AreaImpact": "alan darbesi",
+  "SpawnFragments": "parça",
+  "MultiImpact": "küçük meteorlar",
+  "CreateGroundField": "yer alanı",
+  "EveryNth": "her N. atış",
+  "ModifyIncomingDamage": "zırh",
+  "SummonVolcano": "volkan çağrısı",
+  "SummonGolem": "golem çağrısı",
+  "SummonHive": "kovan çağrısı",
+  "MeteorCall": "meteor çağrısı",
+  "ManaSiphon": "mana sifonu"
+ },
+ "element_tr": {
+  "fire": "ateş",
+  "ice": "buz",
+  "electric": "elektrik",
+  "water": "su",
+  "physical": "fiziksel",
+  "light": "ışık",
+  "blood": "kan",
+  "impact": "çarpma",
+  "lava": "lav",
+  "poison": "zehir",
+  "arcane": "mana"
+ },
+ "economy": {
+  "currencies": {
+   "mana": "Zamanla dolar (+3/sn), öldürme başına +2; Mana rünü hasarı manaya çevirir. Rün satın alma, birleştirme, aşı.",
+   "mana_stone": "Düşmanlar öldükçe düşer ve toplanır (normal 1, iri 3, boss 10). Kule inşası."
+  },
+  "rune_buy_g1_mana": {
+   "default": 40,
+   "summon": 60
+  },
+  "combine": {
+   "rule": "Aynı tür ve aynı grade iki rün → bir üst grade. İki girdinin aşıları çıktıda birleşir.",
+   "fee_mana_per_target_grade_minus_1": 10,
+   "source": "user (combine) + proposal (fee, graft merge)"
+  },
+  "graft_fee": {
+   "formula": "20 * 1.3^(N-2)",
+   "N": "aşıdan sonraki ağaç düğüm sayısı",
+   "donor_consumed": true,
+   "build_order": "en derindeki düğümden başlanır, kardeşler kanonik sırada"
+  },
+  "graft_remove": {
+   "returns": "verici rün ve onun alt ağacı aynen",
+   "fee": "yanar",
+   "source": "user"
+  },
+  "sell": {
+   "mana_refund_pct": 0.6
+  },
+  "tower_cost_stones": {
+   "formula": "4 + 2*(n-1)",
+   "n": "kaçıncı kule (1'den)",
+   "source": "proposal"
+  },
+  "mana_regen_per_s": 3,
+  "mana_per_kill": 2,
+  "stones_per_kill": {
+   "normal": 1,
+   "fast": 1,
+   "brute": 3,
+   "boss": 10
+  },
+  "start": {
+   "mana": 80,
+   "mana_stone": 6,
+   "castle_hp": 20
+  }
+ },
+ "craft_ui": {
+  "source": "user",
+  "preview": false,
+  "rule": "Etki önceden gösterilmez. Craft sonrası çıktı rünün açıklamasında okunur.",
+  "right_panel_top_to_bottom": [
+   "base rune slot",
+   "graft slots = base rune's open abilities (one per grade)",
+   "output rune + 'Craft et'",
+   "inventory"
+  ]
+ },
+ "statuses": {
+  "burn": {
+   "tr": "yanma",
+   "kind": "dot"
+  },
+  "slow": {
+   "tr": "yavaşlatma",
+   "kind": "control"
+  },
+  "cold": {
+   "tr": "soğuk",
+   "kind": "load"
+  },
+  "frozen": {
+   "tr": "donma",
+   "kind": "control"
+  },
+  "charge": {
+   "tr": "elektrik yükü",
+   "kind": "load"
+  },
+  "static": {
+   "tr": "statik",
+   "kind": "mark"
+  },
+  "stun": {
+   "tr": "sersemleme",
+   "kind": "control"
+  },
+  "poison": {
+   "tr": "zehir",
+   "kind": "dot"
+  },
+  "wet": {
+   "tr": "ıslaklık",
+   "kind": "mark"
+  },
+  "shred": {
+   "tr": "zırh aşınması",
+   "kind": "debuff"
+  },
+  "blind": {
+   "tr": "kamaşma",
+   "kind": "debuff"
+  },
+  "lit": {
+   "tr": "aydınlatılmış",
+   "kind": "debuff"
+  },
+  "bleed": {
+   "tr": "kanama",
+   "kind": "movement"
+  },
+  "ramp": {
+   "tr": "kızışma",
+   "kind": "load"
+  },
+  "mana_mark": {
+   "tr": "mana işareti",
+   "kind": "mark"
+  }
+ },
+ "runes": {
+  "fire": {
+   "tr": "Ateş",
+   "order": 1,
+   "kind": "projectile",
+   "element": "fire",
+   "buy": "default",
+   "identity_tr": "Doğrudan ısı → yanma → yanan düşmanın arkasında ateş izi.",
+   "grades": {
+    "1": {
+     "hit": 10.0
+    },
+    "2": {
+     "hit": 11.0,
+     "burn_dps": 2.5,
+     "burn_dur": 3
+    },
+    "3": {
+     "hit": 12.0,
+     "burn_dps": 3.0,
+     "burn_dur": 3,
+     "trail_dps": 1,
+     "trail_dur": 1.0
+    },
+    "4": {
+     "hit": 13.0,
+     "burn_dps": 3.5,
+     "burn_dur": 3,
+     "trail_dps": 1.5,
+     "trail_dur": 1.5
+    },
+    "5": {
+     "hit": 17.0,
+     "burn_dps": 4.5,
+     "burn_dur": 4,
+     "trail_dps": 2,
+     "trail_dur": 2.0
+    }
+   },
+   "ops": {
+    "hit": {
+     "family": "Damage",
+     "element": "fire",
+     "amount": "$hit"
+    },
+    "burn": {
+     "family": "ApplyStatus",
+     "status": "burn",
+     "dps": "$burn_dps",
+     "dur": "$burn_dur",
+     "trail_dps": "$trail_dps",
+     "trail_dur": "$trail_dur",
+     "trail_r": 0.35
+    }
+   },
+   "abilities": [
+    {
+     "id": "fire_hit",
+     "grade": 1,
+     "tr": "Ateş isabeti",
+     "ops": [
+      "hit"
+     ],
+     "slot": "event",
+     "carrier": "projectile_hit",
+     "source": "user",
+     "desc_tr": "{hit} ateş hasarlı mermi."
+    },
+    {
+     "id": "burn",
+     "grade": 2,
+     "tr": "Yanma",
+     "ops": [
+      "burn"
+     ],
+     "slot": "tick",
+     "carrier": "dot_tick",
+     "source": "user",
+     "desc_tr": "İsabet yakar: {burn_dps}/sn × {burn_dur} sn."
+    },
+    {
+     "id": "fire_trail",
+     "grade": 3,
+     "tr": "Ateş izi",
+     "ops": [
+      "burn"
+     ],
+     "slot": "trail",
+     "carrier": "field",
+     "source": "user",
+     "desc_tr": "Yanan düşman arkasında {trail_dur} sn yanan iz bırakır; izdeki düşmanlar {trail_dps}/sn ateş hasarı alır."
+    }
+   ],
+   "balance": {
+    "role": "dot",
+    "damage_stats": [
+     "hit",
+     "burn_dps"
+    ]
+   }
+  },
+  "ice": {
+   "tr": "Buz",
+   "order": 2,
+   "kind": "projectile",
+   "element": "ice",
+   "buy": "default",
+   "identity_tr": "Buz vuruşu → yavaşlatma → donma → donmuş ölümde parçalar → çevreyi dondurma.",
+   "grades": {
+    "1": {
+     "hit": 6.0
+    },
+    "2": {
+     "hit": 9.0,
+     "slow": 0.25,
+     "slow_dur": 1.8
+    },
+    "3": {
+     "hit": 12.0,
+     "slow": 0.3,
+     "slow_dur": 2.0,
+     "cold_threshold": 3,
+     "freeze": 1.0
+    },
+    "4": {
+     "hit": 18.0,
+     "slow": 0.35,
+     "slow_dur": 2.2,
+     "cold_threshold": 3,
+     "freeze": 1.1,
+     "shards": 3,
+     "shard_dmg": 10.0
+    },
+    "5": {
+     "hit": 26.0,
+     "slow": 0.4,
+     "slow_dur": 2.5,
+     "cold_threshold": 3,
+     "freeze": 1.2,
+     "shards": 3,
+     "shard_dmg": 17.0,
+     "nova_r": 0.7
+    }
+   },
+   "ops": {
+    "hit": {
+     "family": "Damage",
+     "element": "ice",
+     "amount": "$hit"
+    },
+    "slow": {
+     "family": "ApplyStatus",
+     "status": "slow",
+     "pct": "$slow",
+     "dur": "$slow_dur"
+    },
+    "cold": {
+     "family": "ApplyStatus",
+     "status": "cold",
+     "per_hit": 1,
+     "threshold": "$cold_threshold",
+     "freeze": "$freeze",
+     "shards": "$shards",
+     "shard_dmg": "$shard_dmg",
+     "nova_r": "$nova_r"
+    }
+   },
+   "abilities": [
+    {
+     "id": "ice_hit",
+     "grade": 1,
+     "tr": "Buz isabeti",
+     "ops": [
+      "hit"
+     ],
+     "slot": "event",
+     "carrier": "projectile_hit",
+     "source": "user",
+     "desc_tr": "{hit} buz hasarı."
+    },
+    {
+     "id": "chill",
+     "grade": 2,
+     "tr": "Yavaşlatma",
+     "ops": [
+      "slow"
+     ],
+     "slot": "apply",
+     "carrier": "status_apply",
+     "source": "user",
+     "desc_tr": "%{slow_pct} yavaşlatır ({slow_dur} sn)."
+    },
+    {
+     "id": "freeze",
+     "grade": 3,
+     "tr": "Donma",
+     "ops": [
+      "cold"
+     ],
+     "slot": "freeze",
+     "carrier": "threshold",
+     "source": "user",
+     "desc_tr": "Her isabet 1 soğuk; {cold_threshold} soğukta {freeze} sn donar."
+    },
+    {
+     "id": "ice_shards",
+     "grade": 4,
+     "tr": "Buz parçaları",
+     "ops": [
+      "cold"
+     ],
+     "slot": "shards",
+     "carrier": "retarget",
+     "source": "user",
+     "desc_tr": "Donmuşken ölen düşman {shards} parçaya ayrılır; yakındakilere {shard_dmg} buz hasarı."
+    },
+    {
+     "id": "frost_nova",
+     "grade": 5,
+     "tr": "Çevreyi dondurma",
+     "ops": [
+      "cold"
+     ],
+     "slot": "nova",
+     "carrier": "impact_area",
+     "source": "user",
+     "desc_tr": "Bir düşman donunca {nova_r} karo içindekiler de yarı süre donar."
+    }
+   ],
+   "balance": {
+    "role": "control",
+    "damage_stats": [
+     "hit",
+     "shard_dmg"
+    ]
+   }
+  },
+  "electric": {
+   "tr": "Elektrik",
+   "order": 3,
+   "kind": "projectile",
+   "element": "electric",
+   "buy": "default",
+   "identity_tr": "Elektrik vuruşu → sekme → aşırı yük (boşalma + şok).",
+   "grades": {
+    "1": {
+     "hit": 9.0
+    },
+    "2": {
+     "hit": 9.5,
+     "chain": 1,
+     "chain_power": 0.6
+    },
+    "3": {
+     "hit": 10.0,
+     "chain": 2,
+     "chain_power": 0.65
+    },
+    "4": {
+     "hit": 11.0,
+     "chain": 2,
+     "chain_power": 0.7,
+     "charge_max": 3,
+     "discharge": 7.5,
+     "shock": 0.3
+    },
+    "5": {
+     "hit": 12.0,
+     "chain": 3,
+     "chain_power": 0.75,
+     "charge_max": 3,
+     "discharge": 12.0,
+     "shock": 0.4
+    }
+   },
+   "ops": {
+    "hit": {
+     "family": "Damage",
+     "element": "electric",
+     "amount": "$hit"
+    },
+    "chain": {
+     "family": "ChainTransfer",
+     "hops": "$chain",
+     "power": "$chain_power"
+    },
+    "charge": {
+     "family": "ApplyStatus",
+     "status": "charge",
+     "max": "$charge_max",
+     "burst": "$discharge",
+     "stun": "$shock"
+    }
+   },
+   "abilities": [
+    {
+     "id": "electric_hit",
+     "grade": 1,
+     "tr": "Elektrik isabeti",
+     "ops": [
+      "hit"
+     ],
+     "slot": "event",
+     "carrier": "projectile_hit",
+     "source": "v4",
+     "desc_tr": "{hit} elektrik hasarı."
+    },
+    {
+     "id": "chain",
+     "grade": 2,
+     "tr": "Sekme",
+     "ops": [
+      "chain"
+     ],
+     "slot": "jump",
+     "carrier": "retarget",
+     "source": "v4",
+     "desc_tr": "Saldırı {chain} yakın hedefe seker (her sekmede güç ×{chain_power})."
+    },
+    {
+     "id": "overload",
+     "grade": 4,
+     "tr": "Aşırı yük",
+     "ops": [
+      "charge"
+     ],
+     "slot": "discharge",
+     "carrier": "threshold",
+     "source": "v4+proposal",
+     "desc_tr": "Her elektrik isabeti 1 yük; {charge_max} yükte boşalır: +{discharge} elektrik ve {shock} sn şok."
+    }
+   ],
+   "balance": {
+    "role": "damage",
+    "damage_stats": [
+     "hit",
+     "discharge"
+    ]
+   },
+   "attack_s": 1.3
+  },
+  "poison": {
+   "tr": "Zehir",
+   "order": 4,
+   "kind": "projectile",
+   "element": "poison",
+   "buy": "default",
+   "identity_tr": "Zehir DoT → yığılma → iyileşme baskısı → ölümde bulaşma. Patlamaz, yerde alan bırakmaz (v4).",
+   "grades": {
+    "1": {
+     "dps": 5.0,
+     "dur": 3,
+     "max_stacks": 1
+    },
+    "2": {
+     "dps": 5.5,
+     "dur": 4,
+     "max_stacks": 3
+    },
+    "3": {
+     "dps": 7.0,
+     "dur": 4,
+     "max_stacks": 3,
+     "heal_supp": 0.3
+    },
+    "4": {
+     "dps": 8.0,
+     "dur": 5,
+     "max_stacks": 4,
+     "heal_supp": 0.3,
+     "contagion": 0.5
+    },
+    "5": {
+     "dps": 11.0,
+     "dur": 5,
+     "max_stacks": 5,
+     "heal_supp": 0.4,
+     "contagion": 0.5
+    }
+   },
+   "ops": {
+    "poison": {
+     "family": "ApplyStatus",
+     "status": "poison",
+     "dps": "$dps",
+     "dur": "$dur",
+     "max_stacks": "$max_stacks",
+     "stack_bonus": 0.5,
+     "heal_supp": "$heal_supp",
+     "contagion": "$contagion"
+    }
+   },
+   "abilities": [
+    {
+     "id": "poison_tick",
+     "grade": 1,
+     "tr": "Zehir tiki",
+     "ops": [
+      "poison"
+     ],
+     "slot": "tick",
+     "carrier": "dot_tick",
+     "source": "v4",
+     "desc_tr": "İsabet zehirler: {dps}/sn × {dur} sn."
+    },
+    {
+     "id": "toxic_stack",
+     "grade": 2,
+     "tr": "Yığılma",
+     "ops": [
+      "poison"
+     ],
+     "slot": "threshold",
+     "carrier": "threshold",
+     "source": "v4",
+     "desc_tr": "Zehir {max_stacks} yığına kadar birikir (yığın başına +%50)."
+    },
+    {
+     "id": "heal_suppression",
+     "grade": 3,
+     "tr": "İyileşme baskısı",
+     "ops": [
+      "poison"
+     ],
+     "slot": "heal",
+     "carrier": "heal",
+     "source": "v4",
+     "desc_tr": "Zehirli düşmanın iyileşmesi %{heal_supp_pct} azalır."
+    },
+    {
+     "id": "contagion",
+     "grade": 4,
+     "tr": "Bulaşma",
+     "ops": [
+      "poison"
+     ],
+     "slot": "infect",
+     "carrier": "death",
+     "source": "proposal",
+     "desc_tr": "Zehirli ölen düşmanın yığınlarının %{contagion_pct}'si en yakın düşmana geçer (patlama yok)."
+    }
+   ],
+   "balance": {
+    "role": "dot",
+    "damage_stats": [
+     "dps"
+    ]
+   }
+  },
+  "water": {
+   "tr": "Su",
+   "order": 5,
+   "kind": "projectile",
+   "element": "water",
+   "buy": "default",
+   "identity_tr": "Su vuruşu → ıslatma → geri itiş → dalga.",
+   "grades": {
+    "1": {
+     "hit": 6.0
+    },
+    "2": {
+     "hit": 9.0,
+     "wet_dur": 3
+    },
+    "3": {
+     "hit": 13.0,
+     "wet_dur": 3,
+     "push": 0.35
+    },
+    "4": {
+     "hit": 20.0,
+     "wet_dur": 3,
+     "push": 0.45
+    },
+    "5": {
+     "hit": 22.0,
+     "wet_dur": 4,
+     "push": 0.55,
+     "wave_r": 0.4
+    }
+   },
+   "ops": {
+    "hit": {
+     "family": "Damage",
+     "element": "water",
+     "amount": "$hit"
+    },
+    "wet": {
+     "family": "ApplyStatus",
+     "status": "wet",
+     "dur": "$wet_dur"
+    },
+    "push": {
+     "family": "ForceMove",
+     "dist": "$push"
+    },
+    "wave": {
+     "family": "AreaImpact",
+     "r": "$wave_r",
+     "frac": 0.25
+    }
+   },
+   "abilities": [
+    {
+     "id": "water_hit",
+     "grade": 1,
+     "tr": "Su isabeti",
+     "ops": [
+      "hit"
+     ],
+     "slot": "event",
+     "carrier": "projectile_hit",
+     "source": "v4",
+     "desc_tr": "{hit} su hasarı."
+    },
+    {
+     "id": "wet",
+     "grade": 2,
+     "tr": "Islatma",
+     "ops": [
+      "wet"
+     ],
+     "slot": "apply",
+     "carrier": "status_apply",
+     "source": "v4",
+     "desc_tr": "{wet_dur} sn ıslatır (ıslak: elektrikten ×1,5, daha çabuk donar, yanma kısalır)."
+    },
+    {
+     "id": "push",
+     "grade": 3,
+     "tr": "Geri itiş",
+     "ops": [
+      "push"
+     ],
+     "slot": "push",
+     "carrier": "forced_move",
+     "source": "v4",
+     "desc_tr": "Hedefi yol boyunca {push} karo geri iter (yanan hedef ×1,5)."
+    },
+    {
+     "id": "wave",
+     "grade": 5,
+     "tr": "Dalga",
+     "ops": [
+      "wave"
+     ],
+     "slot": "area",
+     "carrier": "impact_area",
+     "source": "proposal",
+     "desc_tr": "Su isabeti dalga olur: {wave_r} karo içindekilere %25 hasar, ıslaklık ve itiş."
+    }
+   ],
+   "balance": {
+    "role": "control",
+    "damage_stats": [
+     "hit"
+    ]
+   }
+  },
+  "stone": {
+   "tr": "Taş",
+   "order": 6,
+   "kind": "projectile",
+   "element": "physical",
+   "buy": "default",
+   "identity_tr": "Ağır darbe → zırh aşındırma → parçalar → sarsıntı.",
+   "grades": {
+    "1": {
+     "hit": 14.0
+    },
+    "2": {
+     "hit": 20.0,
+     "shred": 0.08
+    },
+    "3": {
+     "hit": 22.0,
+     "shred": 0.12,
+     "frags": 2
+    },
+    "4": {
+     "hit": 28.0,
+     "shred": 0.16,
+     "frags": 2
+    },
+    "5": {
+     "hit": 30.0,
+     "shred": 0.2,
+     "frags": 3,
+     "stun": 0.4
+    }
+   },
+   "ops": {
+    "hit": {
+     "family": "Damage",
+     "element": "physical",
+     "amount": "$hit"
+    },
+    "shred": {
+     "family": "ApplyStatus",
+     "status": "shred",
+     "pct": "$shred",
+     "dur": 3
+    },
+    "frags": {
+     "family": "SpawnFragments",
+     "n": "$frags",
+     "frac": 0.5
+    },
+    "stun": {
+     "family": "ApplyStatus",
+     "status": "stun",
+     "dur": "$stun",
+     "icd": 2.0
+    }
+   },
+   "abilities": [
+    {
+     "id": "stone_hit",
+     "grade": 1,
+     "tr": "Ağır darbe",
+     "ops": [
+      "hit"
+     ],
+     "slot": "event",
+     "carrier": "projectile_hit",
+     "source": "v4",
+     "desc_tr": "{hit} fiziksel hasar."
+    },
+    {
+     "id": "armor_shred",
+     "grade": 2,
+     "tr": "Zırh aşındırma",
+     "ops": [
+      "shred"
+     ],
+     "slot": "apply",
+     "carrier": "status_apply",
+     "source": "v4",
+     "desc_tr": "Zırhı 3 sn %{shred_pct} azaltır."
+    },
+    {
+     "id": "fragments",
+     "grade": 3,
+     "tr": "Taş parçaları",
+     "ops": [
+      "frags"
+     ],
+     "slot": "fragment",
+     "carrier": "retarget",
+     "source": "v4",
+     "desc_tr": "Çarpmada {frags} parça yakındakilere isabetin %50'sini taşır."
+    },
+    {
+     "id": "concussion",
+     "grade": 5,
+     "tr": "Sarsıntı",
+     "ops": [
+      "stun"
+     ],
+     "slot": "stun",
+     "carrier": "status_apply",
+     "source": "proposal",
+     "desc_tr": "İsabet {stun} sn sersemletir (aynı hedefe 2 sn'de bir)."
+    }
+   ],
+   "balance": {
+    "role": "damage",
+    "damage_stats": [
+     "hit"
+    ]
+   },
+   "attack_s": 2.2
+  },
+  "light": {
+   "tr": "Işık",
+   "order": 7,
+   "kind": "beam",
+   "element": "light",
+   "buy": "default",
+   "identity_tr": "Işın → kamaşma → delme → aydınlatma işareti.",
+   "grades": {
+    "1": {
+     "hit": 8.0
+    },
+    "2": {
+     "hit": 12.0,
+     "blind_dur": 1.5
+    },
+    "3": {
+     "hit": 13.0,
+     "blind_dur": 1.5,
+     "pierce": 1
+    },
+    "4": {
+     "hit": 16.0,
+     "blind_dur": 2.0,
+     "pierce": 2
+    },
+    "5": {
+     "hit": 21.0,
+     "blind_dur": 2.0,
+     "pierce": 2,
+     "lit": 0.15
+    }
+   },
+   "ops": {
+    "hit": {
+     "family": "Damage",
+     "element": "light",
+     "amount": "$hit"
+    },
+    "blind": {
+     "family": "ApplyStatus",
+     "status": "blind",
+     "pct": 0.3,
+     "dur": "$blind_dur"
+    },
+    "pierce": {
+     "family": "Pierce",
+     "n": "$pierce",
+     "power": 0.6
+    },
+    "lit": {
+     "family": "ApplyStatus",
+     "status": "lit",
+     "pct": "$lit",
+     "dur": 3
+    }
+   },
+   "abilities": [
+    {
+     "id": "light_beam",
+     "grade": 1,
+     "tr": "Işın",
+     "ops": [
+      "hit"
+     ],
+     "slot": "event",
+     "carrier": "projectile_hit",
+     "source": "v4",
+     "desc_tr": "{hit} ışık hasarlı ışın."
+    },
+    {
+     "id": "dazzle",
+     "grade": 2,
+     "tr": "Kamaşma",
+     "ops": [
+      "blind"
+     ],
+     "slot": "apply",
+     "carrier": "status_apply",
+     "source": "v4",
+     "desc_tr": "{blind_dur} sn kamaştırır: düşman saldırılarının isabeti %30 düşer."
+    },
+    {
+     "id": "pierce",
+     "grade": 3,
+     "tr": "Delme",
+     "ops": [
+      "pierce"
+     ],
+     "slot": "pierce",
+     "carrier": "retarget",
+     "source": "v4",
+     "desc_tr": "Işın {pierce} hedefi daha deler (her delişte ×0,6)."
+    },
+    {
+     "id": "illuminate",
+     "grade": 5,
+     "tr": "Aydınlatma",
+     "ops": [
+      "lit"
+     ],
+     "slot": "lit",
+     "carrier": "status_apply",
+     "source": "proposal",
+     "desc_tr": "Vurulan düşman 3 sn aydınlanır: tüm kulelerden +%{lit_pct} hasar alır."
+    }
+   ],
+   "balance": {
+    "role": "damage",
+    "damage_stats": [
+     "hit"
+    ]
+   },
+   "attack_s": 1.2
+  },
+  "blood": {
+   "tr": "Kan",
+   "order": 8,
+   "kind": "projectile",
+   "element": "blood",
+   "buy": "default",
+   "identity_tr": "Yürüdükçe kanama → yoğunluk → yırtılma.",
+   "grades": {
+    "1": {
+     "per_tile": 5.0,
+     "dur": 3,
+     "max_int": 1
+    },
+    "2": {
+     "per_tile": 5.5,
+     "dur": 4,
+     "max_int": 3
+    },
+    "3": {
+     "per_tile": 7.5,
+     "dur": 4,
+     "max_int": 3
+    },
+    "4": {
+     "per_tile": 10.0,
+     "dur": 5,
+     "max_int": 3,
+     "rupture": 26.0
+    },
+    "5": {
+     "per_tile": 16.0,
+     "dur": 5,
+     "max_int": 4,
+     "rupture": 41.0
+    }
+   },
+   "ops": {
+    "bleed": {
+     "family": "ApplyStatus",
+     "status": "bleed",
+     "per_tile": "$per_tile",
+     "dur": "$dur",
+     "max_int": "$max_int",
+     "int_step": 0.25,
+     "rupture": "$rupture"
+    }
+   },
+   "abilities": [
+    {
+     "id": "bleed",
+     "grade": 1,
+     "tr": "Kanama",
+     "ops": [
+      "bleed"
+     ],
+     "slot": "move",
+     "carrier": "movement",
+     "source": "v4",
+     "desc_tr": "Kanayan düşman yürüdüğü her karo için {per_tile} hasar alır ({dur} sn). İtiş de sayılır."
+    },
+    {
+     "id": "intensity",
+     "grade": 2,
+     "tr": "Yoğunluk",
+     "ops": [
+      "bleed"
+     ],
+     "slot": "threshold",
+     "carrier": "threshold",
+     "source": "v4",
+     "desc_tr": "Tekrar isabet yoğunluğu artırır (en çok {max_int}, her kat +%25)."
+    },
+    {
+     "id": "rupture",
+     "grade": 4,
+     "tr": "Yırtılma",
+     "ops": [
+      "bleed"
+     ],
+     "slot": "rupture",
+     "carrier": "impact_hit",
+     "source": "proposal",
+     "desc_tr": "Yoğunluk tavana ulaşınca yırtılır: {rupture} kan hasarı, yoğunluk sıfırlanır."
+    }
+   ],
+   "balance": {
+    "role": "dot",
+    "damage_stats": [
+     "per_tile",
+     "rupture"
+    ]
+   }
+  },
+  "meteor": {
+   "tr": "Meteor",
+   "order": 9,
+   "kind": "meteor",
+   "element": "impact",
+   "buy": "summon",
+   "identity_tr": "Gökten meteor → alan darbesi → parçalar → meteor yağmuru.",
+   "grades": {
+    "1": {
+     "hit": 18.0,
+     "period": 3.0,
+     "delay": 0.8
+    },
+    "2": {
+     "hit": 26.0,
+     "period": 3.0,
+     "delay": 0.8,
+     "area_r": 0.45
+    },
+    "3": {
+     "hit": 28.0,
+     "period": 3.0,
+     "delay": 0.8,
+     "area_r": 0.55,
+     "frags": 2
+    },
+    "4": {
+     "hit": 30.0,
+     "period": 2.8,
+     "delay": 0.8,
+     "area_r": 0.65,
+     "frags": 2
+    },
+    "5": {
+     "hit": 32.0,
+     "period": 2.6,
+     "delay": 0.8,
+     "area_r": 0.75,
+     "frags": 3,
+     "minis": 2
+    }
+   },
+   "ops": {
+    "call": {
+     "family": "MeteorCall",
+     "period": "$period",
+     "delay": "$delay"
+    },
+    "hit": {
+     "family": "Damage",
+     "element": "impact",
+     "amount": "$hit"
+    },
+    "area": {
+     "family": "AreaImpact",
+     "r": "$area_r",
+     "frac": 0.6
+    },
+    "frags": {
+     "family": "SpawnFragments",
+     "n": "$frags",
+     "frac": 0.5
+    },
+    "shower": {
+     "family": "MultiImpact",
+     "n": "$minis",
+     "frac": 0.4,
+     "spread": 0.6
+    }
+   },
+   "abilities": [
+    {
+     "id": "meteor_strike",
+     "grade": 1,
+     "tr": "Meteor çarpması",
+     "ops": [
+      "call",
+      "hit"
+     ],
+     "slot": "event",
+     "carrier": "impact_hit",
+     "source": "v4",
+     "desc_tr": "Her {period} sn hedefe gökten meteor düşer: {hit} çarpma hasarı."
+    },
+    {
+     "id": "meteor_area",
+     "grade": 2,
+     "tr": "Alan darbesi",
+     "ops": [
+      "area"
+     ],
+     "slot": "area",
+     "carrier": "impact_area",
+     "source": "v4",
+     "desc_tr": "Çarpma {area_r} karo içindekilere %60 hasar verir."
+    },
+    {
+     "id": "meteor_fragments",
+     "grade": 3,
+     "tr": "Çarpma parçaları",
+     "ops": [
+      "frags"
+     ],
+     "slot": "fragment",
+     "carrier": "retarget",
+     "source": "v4",
+     "desc_tr": "{frags} parça yakındakilere %50 taşır."
+    },
+    {
+     "id": "meteor_shower",
+     "grade": 5,
+     "tr": "Meteor yağmuru",
+     "ops": [
+      "shower"
+     ],
+     "slot": "mini",
+     "carrier": "impact_hit",
+     "source": "proposal",
+     "desc_tr": "Ana meteorun çevresine {minis} küçük meteor düşer (%40)."
+    }
+   ],
+   "balance": {
+    "role": "area",
+    "damage_stats": [
+     "hit"
+    ]
+   }
+  },
+  "volcano": {
+   "tr": "Volkan",
+   "order": 10,
+   "kind": "volcano",
+   "element": "lava",
+   "buy": "summon",
+   "identity_tr": "Yol kenarına çağrılan dağ kraterinden çevresine lav topları fışkırtır → sıçrama → geniş püskürme → lav birikintisi.",
+   "grades": {
+    "1": {
+     "life": 6,
+     "lava": 17.0,
+     "period": 2.5,
+     "blobs": 1
+    },
+    "2": {
+     "life": 7,
+     "lava": 21.0,
+     "period": 2.2,
+     "blobs": 1,
+     "splash_r": 0.3
+    },
+    "3": {
+     "life": 8,
+     "lava": 23.0,
+     "period": 2.0,
+     "blobs": 2,
+     "splash_r": 0.3
+    },
+    "4": {
+     "life": 10,
+     "lava": 34.0,
+     "period": 1.8,
+     "blobs": 2,
+     "splash_r": 0.3,
+     "pool_dps": 3.0,
+     "pool_dur": 1.5
+    },
+    "5": {
+     "life": 12,
+     "lava": 39.0,
+     "period": 1.6,
+     "blobs": 2,
+     "splash_r": 0.3,
+     "pool_dps": 3.5,
+     "pool_dur": 1.5
+    }
+   },
+   "ops": {
+    "summon": {
+     "family": "SummonVolcano",
+     "life": "$life",
+     "period": "$period",
+     "blobs": "$blobs",
+     "reach": 1.5,
+     "flight": 0.6
+    },
+    "lava": {
+     "family": "Damage",
+     "element": "lava",
+     "amount": "$lava"
+    },
+    "splash": {
+     "family": "AreaImpact",
+     "r": "$splash_r",
+     "frac": 0.6
+    },
+    "pool": {
+     "family": "CreateGroundField",
+     "kind": "lava_pool",
+     "r": 0.3,
+     "dur": "$pool_dur",
+     "native": [
+      {
+       "family": "Damage",
+       "element": "lava",
+       "amount": "$pool_dps"
+      }
+     ]
+    }
+   },
+   "abilities": [
+    {
+     "id": "lava_blob",
+     "grade": 1,
+     "tr": "Lav topu",
+     "ops": [
+      "summon",
+      "lava"
+     ],
+     "slot": "event",
+     "carrier": "entity_attack",
+     "source": "user",
+     "desc_tr": "Yol kenarına {life} sn'lik volkan çağırır; her {period} sn kraterden 1,5 karo içine lav topu fışkırır: {lava} lav hasarı.",
+     "chain_verb": "lav topu düşmandan düşmana zıplayarak"
+    },
+    {
+     "id": "splash",
+     "grade": 2,
+     "tr": "Lav sıçraması",
+     "ops": [
+      "splash"
+     ],
+     "slot": "area",
+     "carrier": "impact_area",
+     "source": "v4",
+     "desc_tr": "Top düştüğü yerde {splash_r} karo sıçrar (%60)."
+    },
+    {
+     "id": "wide_eruption",
+     "grade": 3,
+     "tr": "Geniş püskürme",
+     "ops": [
+      "summon"
+     ],
+     "slot": "extra_blobs",
+     "carrier": "entity_attack",
+     "source": "v4",
+     "desc_tr": "Her fışkırmada {blobs} top farklı hedeflere.",
+     "chain_verb": "ek toplar düşmandan düşmana zıplayarak"
+    },
+    {
+     "id": "lava_pool",
+     "grade": 4,
+     "tr": "Lav birikintisi",
+     "ops": [
+      "pool"
+     ],
+     "slot": "field",
+     "carrier": "field",
+     "source": "proposal",
+     "desc_tr": "Top düştüğü yerde {pool_dur} sn lav birikintisi: {pool_dps}/sn."
+    }
+   ],
+   "balance": {
+    "role": "summon",
+    "damage_stats": [
+     "lava",
+     "pool_dps"
+    ]
+   }
+  },
+  "golem": {
+   "tr": "Golem",
+   "order": 11,
+   "kind": "golem",
+   "element": "physical",
+   "buy": "summon",
+   "identity_tr": "Yürüyen dost birim → taş deri → zemin darbesi.",
+   "grades": {
+    "1": {
+     "hp": 60,
+     "punch": 8.0,
+     "life": 10
+    },
+    "2": {
+     "hp": 75,
+     "punch": 10.0,
+     "life": 11,
+     "armor": 0.1
+    },
+    "3": {
+     "hp": 90,
+     "punch": 11.0,
+     "life": 12,
+     "armor": 0.1,
+     "slam_r": 0.6,
+     "slam_every": 3
+    },
+    "4": {
+     "hp": 110,
+     "punch": 17.0,
+     "life": 14,
+     "armor": 0.1,
+     "slam_r": 0.6,
+     "slam_every": 3
+    },
+    "5": {
+     "hp": 135,
+     "punch": 25.0,
+     "life": 15,
+     "armor": 0.1,
+     "slam_r": 0.7,
+     "slam_every": 3
+    }
+   },
+   "ops": {
+    "summon": {
+     "family": "SummonGolem",
+     "hp": "$hp",
+     "life": "$life",
+     "attack_s": 1.0,
+     "speed": 1.5,
+     "slam_r": "$slam_r",
+     "slam_every": "$slam_every"
+    },
+    "punch": {
+     "family": "Damage",
+     "element": "physical",
+     "amount": "$punch"
+    },
+    "armor": {
+     "family": "ModifyIncomingDamage",
+     "pct": "$armor"
+    }
+   },
+   "abilities": [
+    {
+     "id": "golem_punch",
+     "grade": 1,
+     "tr": "Golem yumruğu",
+     "ops": [
+      "summon",
+      "punch"
+     ],
+     "slot": "event",
+     "carrier": "entity_attack",
+     "source": "v4",
+     "desc_tr": "{life} sn'lik golem çağırır; en yakın düşmana yürür, saniyede bir {punch} fiziksel vurur.",
+     "chain_verb": "yumruk şok dalgası yandakine geçerek"
+    },
+    {
+     "id": "stone_skin",
+     "grade": 2,
+     "tr": "Taş deri",
+     "ops": [
+      "armor"
+     ],
+     "slot": "defense",
+     "carrier": "defense",
+     "source": "v4",
+     "desc_tr": "Golem %{armor_pct} az hasar alır."
+    },
+    {
+     "id": "ground_slam",
+     "grade": 3,
+     "tr": "Zemin darbesi",
+     "ops": [
+      "summon"
+     ],
+     "slot": "slam",
+     "carrier": "impact_area",
+     "source": "v4",
+     "desc_tr": "Her {slam_every}. vuruş {slam_r} karo zemin darbesidir."
+    }
+   ],
+   "balance": {
+    "role": "summon",
+    "damage_stats": [
+     "punch"
+    ]
+   }
+  },
+  "hive": {
+   "tr": "Kovan",
+   "order": 12,
+   "kind": "hive",
+   "element": "physical",
+   "buy": "summon",
+   "identity_tr": "Yuva ve böcekler → üreme → sürü odağı.",
+   "grades": {
+    "1": {
+     "life": 10,
+     "bite": 3.5,
+     "beetles": 2
+    },
+    "2": {
+     "life": 11,
+     "bite": 4.0,
+     "beetles": 3,
+     "brood": 1
+    },
+    "3": {
+     "life": 12,
+     "bite": 5.0,
+     "beetles": 3,
+     "brood": 1,
+     "focus": 1
+    },
+    "4": {
+     "life": 14,
+     "bite": 6.5,
+     "beetles": 4,
+     "brood": 1,
+     "focus": 1
+    },
+    "5": {
+     "life": 16,
+     "bite": 9.0,
+     "beetles": 5,
+     "brood": 1,
+     "focus": 1
+    }
+   },
+   "ops": {
+    "summon": {
+     "family": "SummonHive",
+     "life": "$life",
+     "beetles": "$beetles",
+     "spawn_s": 1.5,
+     "bite_s": 1.0,
+     "speed": 2.5,
+     "brood": "$brood",
+     "focus": "$focus"
+    },
+    "bite": {
+     "family": "Damage",
+     "element": "physical",
+     "amount": "$bite"
+    }
+   },
+   "abilities": [
+    {
+     "id": "beetle_bite",
+     "grade": 1,
+     "tr": "Böcek ısırığı",
+     "ops": [
+      "summon",
+      "bite"
+     ],
+     "slot": "event",
+     "carrier": "entity_attack",
+     "source": "v4",
+     "desc_tr": "{life} sn'lik kovan kurar; en çok {beetles} böcek, ısırık başına {bite} hasar.",
+     "chain_verb": "ısırık yandakine sıçrayarak"
+    },
+    {
+     "id": "brood",
+     "grade": 2,
+     "tr": "Üreme",
+     "ops": [
+      "summon"
+     ],
+     "slot": "birth",
+     "carrier": "spawn",
+     "source": "proposal",
+     "desc_tr": "Öldüren böcek yeni böcek doğurur (en çok +2)."
+    },
+    {
+     "id": "swarm_focus",
+     "grade": 3,
+     "tr": "Sürü odağı",
+     "ops": [
+      "summon"
+     ],
+     "slot": "mark",
+     "carrier": "mark",
+     "source": "v4",
+     "desc_tr": "Böcekler işaretlenen tek hedefe birlikte saldırır."
+    }
+   ],
+   "balance": {
+    "role": "summon",
+    "damage_stats": [
+     "bite"
+    ]
+   }
+  },
+  "mana": {
+   "tr": "Mana",
+   "order": 13,
+   "kind": "projectile",
+   "element": "arcane",
+   "buy": "default",
+   "attack_s": 1.4,
+   "identity_tr": "Ekonomi rünü: verdiği hasarı manaya çevirir → işaretlediği düşmanın çevresindeki tüm hasarı manaya çevirir → işaretli düşman ölünce kristal (mana taşı).",
+   "balance": {
+    "role": "economy",
+    "damage_stats": [
+     "hit"
+    ]
+   },
+   "grades": {
+    "1": {
+     "hit": 4.5,
+     "siphon": 0.6
+    },
+    "2": {
+     "hit": 6.5,
+     "siphon": 0.7
+    },
+    "3": {
+     "hit": 10.0,
+     "siphon": 0.75,
+     "mark_pct": 0.2,
+     "mark_r": 1.0,
+     "mark_dur": 4
+    },
+    "4": {
+     "hit": 15.0,
+     "siphon": 0.85,
+     "mark_pct": 0.25,
+     "mark_r": 1.2,
+     "mark_dur": 4
+    },
+    "5": {
+     "hit": 22.0,
+     "siphon": 1.0,
+     "mark_pct": 0.3,
+     "mark_r": 1.4,
+     "mark_dur": 5,
+     "crystal": 2
+    }
+   },
+   "ops": {
+    "hit": {
+     "family": "Damage",
+     "element": "arcane",
+     "amount": "$hit"
+    },
+    "siphon": {
+     "family": "ManaSiphon",
+     "siphon": "$siphon"
+    },
+    "mark": {
+     "family": "ApplyStatus",
+     "status": "mana_mark",
+     "mark_pct": "$mark_pct",
+     "r": "$mark_r",
+     "dur": "$mark_dur",
+     "crystal": "$crystal"
+    }
+   },
+   "abilities": [
+    {
+     "id": "mana_siphon",
+     "grade": 1,
+     "tr": "Mana sifonu",
+     "ops": [
+      "hit",
+      "siphon"
+     ],
+     "slot": "event",
+     "carrier": "projectile_hit",
+     "source": "user",
+     "desc_tr": "{hit} mana hasarı; bu olaydaki hasarın %{siphon_pct}'i mana olur. Aşılandığı yetenekte ana rünün hasarını da manaya çevirir."
+    },
+    {
+     "id": "mana_mark",
+     "grade": 3,
+     "tr": "Mana işareti",
+     "ops": [
+      "mark"
+     ],
+     "slot": "mark",
+     "carrier": "status_apply",
+     "source": "user",
+     "desc_tr": "Vurulan düşman {mark_dur} sn işaretlenir: çevresindeki {mark_r} karo içinde hangi kuleden gelirse gelsin tüm hasarın %{mark_pct_pct}'i mana olur."
+    },
+    {
+     "id": "crystallize",
+     "grade": 5,
+     "tr": "Kristalleşme",
+     "ops": [
+      "mark"
+     ],
+     "slot": "crystal",
+     "carrier": "death",
+     "source": "proposal",
+     "desc_tr": "İşaretli düşman ölünce +{crystal} mana taşı düşer."
+    }
+   ]
+  }
+ },
+ "balance": {
+  "g1_dps": 4.5,
+  "per_grade": 1.5,
+  "roles": {
+   "damage": 1.0,
+   "area": 1.0,
+   "dot": 1.0,
+   "summon": 1.0,
+   "control": 0.6,
+   "economy": 0.5
+  },
+  "method": "mechanics/balance.py fits damage stats to target(g)=g1_dps*per_grade^(g-1)*role on the reference pack (hp 1000, no deaths); damage stats strictly grow grade to grade",
+  "why": "A grade-up costs two runes of the grade below, towers are limited by mana stone, so each grade must feel ~1.5x stronger per tower."
+ }
+}
